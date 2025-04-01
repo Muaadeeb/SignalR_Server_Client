@@ -1,0 +1,123 @@
+﻿@page "/chat"
+@using SignalR.Client.Services
+@inject ChatService ChatService
+
+<h3>Chat</h3>
+
+@if (!ChatService.IsConnected)
+{
+    <p>Connecting to chat...</p>
+}
+else if (string.IsNullOrEmpty(currentUser))
+{
+    <input @bind="currentUser" placeholder="Enter your name" />
+    <button @onclick="Join">Join Chat</button>
+}
+else
+{
+    <p>Connected as: @currentUser (ID: @ChatService.ConnectionId)</p>
+    <input @bind="message" placeholder="Type a message" />
+    <button @onclick="Send">Send</button>
+    <button @onclick="Leave">Leave Chat</button>
+}
+
+<ul>
+    @foreach (var msg in messages)
+    {
+        <li>@msg</li>
+    }
+</ul>
+
+@if (statusMessages.Any())
+{
+    <div>
+        <h4>Status</h4>
+        <ul>
+            @foreach (var status in statusMessages)
+            {
+                <li>@status</li>
+            }
+        </ul>
+    </div>
+}
+
+@code {
+    private string currentUser = "";
+    private string message = "";
+    private List<string> messages = new();
+    private List<string> statusMessages = new();
+
+    protected override void OnInitialized()
+    {
+        ChatService.OnMessageReceived += (user, msg) =>
+        {
+            messages.Add($"{user}: {msg}");
+            StateHasChanged();
+        };
+
+        ChatService.OnUserJoined += (user) =>
+        {
+            statusMessages.Add($"{user} joined the chat");
+            StateHasChanged();
+        };
+
+        ChatService.OnUserLeft += (user) =>
+        {
+            statusMessages.Add($"{user} left the chat");
+            StateHasChanged();
+        };
+
+        ChatService.OnConnected += () =>
+        {
+            statusMessages.Add("Connected to the chat server");
+            StateHasChanged();
+        };
+
+        ChatService.OnDisconnected += () =>
+        {
+            statusMessages.Add("Disconnected from the server");
+            StateHasChanged();
+        };
+
+        ChatService.OnReconnecting += () =>
+        {
+            statusMessages.Add("Reconnecting...");
+            StateHasChanged();
+        };
+
+        ChatService.OnReconnected += () =>
+        {
+            statusMessages.Add("Reconnected!");
+            StateHasChanged();
+        };
+
+        ChatService.OnError += (error) =>
+        {
+            statusMessages.Add($"Error: {error}");
+            StateHasChanged();
+        };
+    }
+
+    private async Task Join()
+    {
+        if (!string.IsNullOrWhiteSpace(currentUser))
+        {
+            await ChatService.JoinChat(currentUser);
+        }
+    }
+
+    private async Task Send()
+    {
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            await ChatService.SendMessage(currentUser, message);
+            message = "";
+        }
+    }
+
+    private async Task Leave()
+    {
+        await ChatService.LeaveChat(currentUser);
+        currentUser = "";
+    }
+}

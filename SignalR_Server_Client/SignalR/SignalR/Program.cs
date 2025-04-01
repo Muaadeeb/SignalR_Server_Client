@@ -1,5 +1,7 @@
+using Microsoft.AspNetCore.SignalR;
 using SignalR.Client.Pages;
 using SignalR.Components;
+using SignalR.Hubs;
 
 namespace SignalR
 {
@@ -13,6 +15,21 @@ namespace SignalR
             builder.Services.AddRazorComponents()
                 .AddInteractiveServerComponents()
                 .AddInteractiveWebAssemblyComponents();
+
+            builder.Services.AddSignalR();
+
+
+            // this is needed if we run wasm on a different domain or port
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("AllowAll", builder =>
+                {
+                    builder.AllowAnyOrigin()
+                        .AllowAnyMethod()
+                        .AllowAnyHeader()
+                        .WithExposedHeaders("Content-Disposition");
+                });
+            });
 
             var app = builder.Build();
 
@@ -38,7 +55,15 @@ namespace SignalR
                 .AddInteractiveWebAssemblyRenderMode()
                 .AddAdditionalAssemblies(typeof(Client._Imports).Assembly);
 
+
+            // Map the SignalR Hub
+            app.MapHub<ChatHub>("hubs/chathub"); // Adjust the hub name and URL as needed
+
+            // Don't need know, but may if hosted on different domain.
+            app.UseCors();
+
             app.Run();
         }
     }
 }
+
