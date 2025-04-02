@@ -42,6 +42,8 @@
             <!-- Group Chat -->
             <div class="chat-box">
                 <h4>Group Chat</h4>
+                <p>Debug: Total messages = @messages.Count, Group messages = @messages.Count(m => m.StartsWith("[Group]"))</p>
+                <p>Debug: Messages = @string.Join(" | ", messages)</p>
                 <div class="group-controls">
                     <input @bind="groupName" placeholder="Group name" class="input-field" />
                     <button @onclick="JoinGroup" class="btn btn-success">Join</button>
@@ -61,7 +63,7 @@
                     </div>
                 }
                 <div class="message-list">
-                    @foreach (var msg in messages.Where(m => m.StartsWith("[Group]")))
+                    @foreach (var msg in messages.Where(m => m.Contains("[Group")))
                     {
                         <p>@msg</p>
                     }
@@ -117,6 +119,7 @@
             string formattedMsg = $"[Group:{selectedGroup}] {user}: {msg}";
             messages.Add(formattedMsg);
             Console.WriteLine($"Group message added: {formattedMsg}, SelectedGroup: {selectedGroup}");
+            StateHasChanged();
             StateHasChanged();
         };
         ChatService.OnUserJoined += (user) =>
