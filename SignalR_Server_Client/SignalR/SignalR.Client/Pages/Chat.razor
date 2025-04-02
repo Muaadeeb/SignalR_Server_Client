@@ -14,18 +14,7 @@
         <div class="join-section">
             <input @bind="currentUser" @bind:event="oninput" placeholder="Enter your name" class="input-field" />
             <button @onclick="Join" class="btn btn-primary">Join Chat</button>
-            <button @onclick="@(() => { Console.WriteLine("Test button clicked"); })" class="btn btn-secondary">Test</button>
-            <button @onclick="@(() => Join())" class="btn btn-info">Force Join</button>
-            <p>Debug: Current input = "@currentUser"</p>
         </div>
-    }
-    else
-    {
-        <div class="user-info">
-            <p>Logged in as: <strong>@currentUser</strong> (ID: @ChatService.ConnectionId)</p>
-            <button @onclick="Leave" class="btn btn-danger">Leave Chat</button>
-        </div>
-        <!-- Uncomment rest of chat UI as needed -->
     }
     else
     {
@@ -113,18 +102,21 @@
     private List<string> messages = new();
     private List<string> onlineUsers = new();
     private List<string> statusMessages = new();
-    private bool isJoined = false; // New flag
+    private bool isJoined = false;
 
     protected override void OnInitialized()
     {
         ChatService.OnMessageReceived += (user, msg) =>
         {
             messages.Add($"[General] {user}: {msg}");
+            Console.WriteLine($"General message added: [General] {user}: {msg}");
             StateHasChanged();
         };
         ChatService.OnGroupMessageReceived += (user, msg) =>
         {
-            messages.Add($"[Group] {user}: {msg}");
+            string formattedMsg = $"[Group:{selectedGroup}] {user}: {msg}";
+            messages.Add(formattedMsg);
+            Console.WriteLine($"Group message added: {formattedMsg}, SelectedGroup: {selectedGroup}");
             StateHasChanged();
         };
         ChatService.OnUserJoined += (user) =>
@@ -142,6 +134,11 @@
             onlineUsers = users;
             StateHasChanged();
         };
+        ChatService.OnGroupMessage += (msg) =>
+        {
+            statusMessages.Add(msg);
+            StateHasChanged();
+        };
         ChatService.OnConnected += () =>
         {
             statusMessages.Add("Connected to the server");
@@ -151,7 +148,7 @@
         {
             statusMessages.Add("Disconnected from the server");
             onlineUsers.Clear();
-            isJoined = false; // Reset on disconnect
+            isJoined = false;
             StateHasChanged();
         };
         ChatService.OnReconnecting += () =>
@@ -180,7 +177,7 @@
             Console.WriteLine($"Join clicked for {currentUser}");
             await ChatService.JoinChat(currentUser);
             Console.WriteLine("JoinChat completed");
-            isJoined = true; // Only switch UI after successful join
+            isJoined = true;
         }
         else
         {
@@ -218,6 +215,7 @@
             if (selectedGroup == groupName)
             {
                 selectedGroup = ChatService.JoinedGroups.FirstOrDefault();
+                statusMessages.Add($"You left group {groupName}");
             }
             groupName = "";
         }
@@ -238,7 +236,7 @@
         currentUser = "";
         groupName = "";
         selectedGroup = null;
-        isJoined = false; // Reset UI to join section
+        isJoined = false;
     }
 }
 
@@ -256,9 +254,4 @@
             border: 1px solid #ddd;
             border-radius: 3px;
         }
-
-    .btn-info {
-        background-color: #17a2b8;
-        color: white;
-    }
 </style>
