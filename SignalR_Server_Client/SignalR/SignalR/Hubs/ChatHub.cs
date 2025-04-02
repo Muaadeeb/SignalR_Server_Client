@@ -88,7 +88,7 @@ namespace SignalR.Hubs
                 if (_connectedUsers.TryGetValue(Context.ConnectionId, out string? username))
                 {
                     Console.WriteLine($"LeaveGroup: {Context.ConnectionId} as {username} left {groupName}");
-                    await Clients.Group(groupName).SendAsync("GroupMessage", $"{username} left group {groupName}"); // Added broadcast
+                    await Clients.Group(groupName).SendAsync("GroupMessage", $"{username} left group {groupName}");
                 }
                 else
                 {
@@ -111,7 +111,7 @@ namespace SignalR.Hubs
                 if (_connectedUsers.TryGetValue(Context.ConnectionId, out string? username))
                 {
                     Console.WriteLine($"SendGroupMessage: {username} to {groupName} - {message}");
-                    await Clients.Group(groupName).SendAsync("ReceiveGroupMessage", username, message);
+                    await Clients.Group(groupName).SendAsync("ReceiveGroupMessage", username, groupName, message); // Add groupName
                 }
                 else
                 {
@@ -121,6 +121,38 @@ namespace SignalR.Hubs
             catch (Exception ex)
             {
                 Console.WriteLine($"Error in SendGroupMessage: {ex.Message}");
+                throw;
+            }
+        }
+
+        public async Task SendPrivateMessage(string toUser, string message)
+        {
+            try
+            {
+                if (_connectedUsers.TryGetValue(Context.ConnectionId, out string? fromUser))
+                {
+                    var toConnectionId = _connectedUsers.FirstOrDefault(x => x.Value == toUser).Key;
+                    if (toConnectionId != null)
+                    {
+                        Console.WriteLine($"SendPrivateMessage: {fromUser} to {toUser} - {message}");
+                        await Clients.Client(toConnectionId).SendAsync("ReceivePrivateMessage", fromUser, message);
+                        // Optionally notify sender too (for their own log)
+                        await Clients.Client(Context.ConnectionId).SendAsync("ReceivePrivateMessage", fromUser, message);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"SendPrivateMessage: User {toUser} not found");
+                        await Clients.Client(Context.ConnectionId).SendAsync("ReceivePrivateMessage", "System", $"{toUser} is not online");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"SendPrivateMessage: Sender {Context.ConnectionId} not in _connectedUsers");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in SendPrivateMessage: {ex.Message}");
                 throw;
             }
         }

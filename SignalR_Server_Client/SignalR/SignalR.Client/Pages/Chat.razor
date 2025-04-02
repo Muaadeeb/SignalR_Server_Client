@@ -66,6 +66,33 @@
             </div>
         </div>
 
+        <!-- Private Chats Section -->
+        <div class="chat-section">
+            <h4>Private Chats</h4>
+            <div class="message-list">
+                @foreach (var msg in privateMessages)
+                {
+                    <p>@msg</p>
+                }
+            </div>
+            @if (onlineUsers.Any(u => u != currentUser))
+            {
+                <div class="user-select">
+                    <label>Select user to message:</label>
+                    <select @bind="selectedUser" class="input-field">
+                        @foreach (var user in onlineUsers.Where(u => u != currentUser))
+                        {
+                            <option value="@user">@user</option>
+                        }
+                    </select>
+                </div>
+            }
+            <div class="input-group">
+                <input @bind="privateMessage" @bind:event="oninput" placeholder="Private message" class="input-field" />
+                <button @onclick="SendPrivate" class="btn btn-primary" disabled="@(string.IsNullOrEmpty(selectedUser))">Send Private</button>
+            </div>
+        </div>
+
         <!-- Join/Leave Group Section -->
         <div class="group-join-section">
             <h4>Join/Leave Group</h4>
@@ -103,8 +130,11 @@
     private string message = "";
     private string groupName = "";
     private string groupMessage = "";
+    private string privateMessage = "";
     private string? selectedGroup = null;
+    private string? selectedUser = null;
     private List<string> messages = new();
+    private List<string> privateMessages = new();
     private List<string> onlineUsers = new();
     private List<StatusEntry> statusMessages = new();
     private bool isJoined = false;
@@ -144,11 +174,19 @@
         };
         ChatService.OnGroupMessageReceived += (user, msg) =>
         {
-            string formattedMsg = $"[Group:{selectedGroup}] {user}: {msg}";
-            messages.Add(formattedMsg);
-            Console.WriteLine($"Group message added: {formattedMsg}, SelectedGroup: {selectedGroup}");
-            StateHasChanged();
-            StateHasChanged();
+            var parts = msg.Split('|', 2);
+            if (parts.Length == 2)
+            {
+                string groupName = parts[0];
+                string messageText = parts[1];
+                if (ChatService.JoinedGroups.Contains(groupName))
+                {
+                    string formattedMsg = $"[Group:{groupName}] {user}: {messageText}";
+                    messages.Add(formattedMsg);
+                    Console.WriteLine($"Group message added: {formattedMsg}");
+                    StateHasChanged();
+                }
+            }
         };
         ChatService.OnUserJoined += (user) =>
         {
@@ -165,6 +203,10 @@
         ChatService.OnUserListUpdated += (users) =>
         {
             onlineUsers = users;
+            if (selectedUser == null || !onlineUsers.Contains(selectedUser))
+            {
+                selectedUser = onlineUsers.FirstOrDefault(u => u != currentUser);
+            }
             StateHasChanged();
         };
         ChatService.OnGroupMessage += (msg) =>
@@ -197,12 +239,24 @@
         {
             statusMessages.Add(new StatusEntry("Reconnected!"));
             selectedGroup = null;
+            selectedUser = null;
             StateHasChanged();
             ScrollLogToBottom();
         };
         ChatService.OnError += (error) =>
         {
             statusMessages.Add(new StatusEntry($"Error: {error}"));
+            StateHasChanged();
+            ScrollLogToBottom();
+        };
+        ChatService.OnPrivateMessageReceived += (fromUser, msg) =>
+        {
+            if (fromUser != currentUser)
+            {
+                privateMessages.Add($"[Private] {fromUser}: {msg}");
+            }
+            statusMessages.Add(new StatusEntry($"Private message from {fromUser}: {msg}"));
+            Console.WriteLine($"Private message received: [Private] {fromUser} to {currentUser}: {msg}");
             StateHasChanged();
             ScrollLogToBottom();
         };
@@ -229,10 +283,6 @@
             await ChatService.JoinChat(currentUser);
             Console.WriteLine("JoinChat completed");
             isJoined = true;
-        }
-        else
-        {
-            Console.WriteLine("Join skipped: currentUser is empty");
         }
     }
 
@@ -263,13 +313,13 @@
         if (!string.IsNullOrWhiteSpace(groupName))
         {
             await ChatService.LeaveGroup(groupName);
-            statusMessages.Add(new StatusEntry($"{currentUser} left group {groupName}")); // Log every leave
+            statusMessages.Add(new StatusEntry($"{currentUser} left group {groupName}"));
             if (selectedGroup == groupName)
             {
                 selectedGroup = ChatService.JoinedGroups.FirstOrDefault();
             }
             groupName = "";
-            StateHasChanged(); // Ensure UI updates
+            StateHasChanged();
             ScrollLogToBottom();
         }
     }
@@ -283,12 +333,22 @@
         }
     }
 
+    private async Task SendPrivate()
+    {
+        if (!string.IsNullOrWhiteSpace(privateMessage) && !string.IsNullOrEmpty(selectedUser))
+        {
+            await ChatService.SendPrivateMessage(selectedUser, privateMessage);
+            privateMessage = "";
+        }
+    }
+
     private async Task Leave()
     {
         await ChatService.LeaveChat(currentUser);
         currentUser = "";
         groupName = "";
         selectedGroup = null;
+        selectedUser = null;
         isJoined = false;
     }
 }
@@ -339,17 +399,17 @@
         margin-bottom: 10px;
     }
 
-    .group-select {
+    .group-select, .user-select {
         margin-bottom: 10px;
         display: flex;
         align-items: center;
     }
 
-        .group-select label {
+        .group-select label, .user-select label {
             margin-right: 10px;
         }
 
-        .group-select select {
+        .group-select select, .user-select select {
             padding: 5px;
             border: 1px solid #ddd;
             border-radius: 3px;

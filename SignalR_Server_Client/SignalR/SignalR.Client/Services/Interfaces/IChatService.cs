@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 public interface IChatService
 {
-    // Events
+    // Existing Events
     event Action<string, string>? OnMessageReceived;
     event Action<string, string>? OnGroupMessageReceived;
     event Action<string>? OnUserJoined;
@@ -18,13 +18,14 @@ public interface IChatService
     event Action? OnReconnecting;
     event Action? OnReconnected;
     event Action<string>? OnError;
+    event Action<string, string>? OnPrivateMessageReceived;
 
-    // Properties
+    // Existing Properties
     IReadOnlyList<string> JoinedGroups { get; }
     bool IsConnected { get; }
     string ConnectionId { get; }
 
-    // Methods
+    // Existing Methods
     Task StartConnectionAsync();
     Task SendMessage(string user, string message);
     Task JoinChat(string user);
@@ -32,4 +33,5 @@ public interface IChatService
     Task JoinGroup(string groupName);
     Task LeaveGroup(string groupName);
     Task SendGroupMessage(string groupName, string message);
+    Task SendPrivateMessage(string toUser, string message);
 }

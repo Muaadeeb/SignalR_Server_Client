@@ -10,7 +10,7 @@ namespace SignalR.Client.Services
         private List<string> joinedGroups = new();
         public IReadOnlyList<string> JoinedGroups => joinedGroups.AsReadOnly();
 
-        // Events (unchanged)
+        // Existing Events
         public event Action<string, string>? OnMessageReceived;
         public event Action<string, string>? OnGroupMessageReceived;
         public event Action<string>? OnUserJoined;
@@ -22,6 +22,8 @@ namespace SignalR.Client.Services
         public event Action? OnReconnecting;
         public event Action? OnReconnected;
         public event Action<string>? OnError;
+        // New Event
+        public event Action<string, string>? OnPrivateMessageReceived;
 
         public ChatService()
         {
@@ -30,14 +32,14 @@ namespace SignalR.Client.Services
                 .WithAutomaticReconnect()
                 .Build();
 
-            // Register handlers (unchanged)
+            // Existing Handlers
             _connection.On<string, string>("ReceiveMessage", (user, message) =>
                 OnMessageReceived?.Invoke(user, message));
 
-            _connection.On<string, string>("ReceiveGroupMessage", (user, message) =>
+            _connection.On<string, string, string>("ReceiveGroupMessage", (user, groupName, message) =>
             {
-                Console.WriteLine($"Received group message from {user}: {message}");
-                OnGroupMessageReceived?.Invoke(user, message);
+                Console.WriteLine($"Received group message from {user} in {groupName}: {message}");
+                OnGroupMessageReceived?.Invoke(user, $"{groupName}|{message}");
             });
 
             _connection.On<string>("UserJoined", (user) =>
@@ -81,6 +83,13 @@ namespace SignalR.Client.Services
                 }
                 await Task.CompletedTask;
             };
+
+            // New Handler
+            _connection.On<string, string>("ReceivePrivateMessage", (fromUser, message) =>
+            {
+                Console.WriteLine($"Received private message from {fromUser}: {message}");
+                OnPrivateMessageReceived?.Invoke(fromUser, message);
+            });
         }
 
         public async Task StartConnectionAsync()
@@ -195,6 +204,19 @@ namespace SignalR.Client.Services
             catch (Exception ex)
             {
                 OnError?.Invoke($"Failed to send group message: {ex.Message}");
+            }
+        }
+
+        public async Task SendPrivateMessage(string toUser, string message)
+        {
+            try
+            {
+                Console.WriteLine($"Sending private message to {toUser}: {message}");
+                await _connection.InvokeAsync("SendPrivateMessage", toUser, message);
+            }
+            catch (Exception ex)
+            {
+                OnError?.Invoke($"Failed to send private message: {ex.Message}");
             }
         }
 
