@@ -1,5 +1,4 @@
-﻿// SignalR/Hubs/ChatHub.cs
-using Microsoft.AspNetCore.SignalR;
+﻿using Microsoft.AspNetCore.SignalR;
 using System.Collections.Concurrent;
 
 namespace SignalR.Hubs
@@ -88,7 +87,13 @@ namespace SignalR.Hubs
                 await Groups.RemoveFromGroupAsync(Context.ConnectionId, groupName);
                 if (_connectedUsers.TryGetValue(Context.ConnectionId, out string? username))
                 {
-                    await Clients.Group(groupName).SendAsync("GroupMessage", $"{username} left group {groupName}");
+                    Console.WriteLine($"LeaveGroup: {Context.ConnectionId} as {username} left {groupName}");
+                    await Clients.Group(groupName).SendAsync("GroupMessage", $"{username} left group {groupName}"); // Added broadcast
+                }
+                else
+                {
+                    Console.WriteLine($"LeaveGroup: {Context.ConnectionId} not found in _connectedUsers");
+                    await Clients.Group(groupName).SendAsync("GroupMessage", $"Anonymous user left group {groupName}");
                 }
             }
             catch (Exception ex)

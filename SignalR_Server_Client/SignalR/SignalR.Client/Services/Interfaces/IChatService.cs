@@ -25,6 +25,7 @@ public interface IChatService
     string ConnectionId { get; }
 
     // Methods
+    Task StartConnectionAsync();
     Task SendMessage(string user, string message);
     Task JoinChat(string user);
     Task LeaveChat(string user);

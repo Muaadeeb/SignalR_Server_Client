@@ -1,6 +1,7 @@
 ﻿@page "/chat"
 @using SignalR.Client.Services.Interfaces
 @inject IChatService ChatService
+@inject IJSRuntime JSRuntime
 
 <div class="chat-container">
     <h3>Chat Room</h3>
@@ -23,77 +24,79 @@
             <button @onclick="Leave" class="btn btn-danger">Leave Chat</button>
         </div>
 
-        <div class="chat-sections">
-            <!-- General Chat -->
-            <div class="chat-box">
-                <h4>General Chat</h4>
-                <div class="message-list">
-                    @foreach (var msg in messages.Where(m => m.StartsWith("[General]")))
-                    {
-                        <p>@msg</p>
-                    }
-                </div>
-                <div class="input-group">
-                    <input @bind="message" @bind:event="oninput" placeholder="Type a message" class="input-field" />
-                    <button @onclick="Send" class="btn btn-primary">Send</button>
-                </div>
-            </div>
-
-            <!-- Group Chat -->
-            <div class="chat-box">
-                <h4>Group Chat</h4>
-                <p>Debug: Total messages = @messages.Count, Group messages = @messages.Count(m => m.StartsWith("[Group]"))</p>
-                <p>Debug: Messages = @string.Join(" | ", messages)</p>
-                <div class="group-controls">
-                    <input @bind="groupName" placeholder="Group name" class="input-field" />
-                    <button @onclick="JoinGroup" class="btn btn-success">Join</button>
-                    <button @onclick="LeaveGroup" class="btn btn-warning">Leave</button>
-                </div>
-                <p>Joined groups: @(ChatService.JoinedGroups.Any() ? string.Join(", ", ChatService.JoinedGroups) : "None")</p>
-                @if (ChatService.JoinedGroups.Any())
+        <!-- General Chat Section -->
+        <div class="chat-section">
+            <h4>General Chat</h4>
+            <div class="message-list">
+                @foreach (var msg in messages.Where(m => m.StartsWith("[General]")))
                 {
-                    <div class="group-select">
-                        <label>Select group to send to:</label>
-                        <select @bind="selectedGroup" class="input-field">
-                            @foreach (var group in ChatService.JoinedGroups)
-                            {
-                                <option value="@group">@group</option>
-                            }
-                        </select>
-                    </div>
+                    <p>@msg</p>
                 }
-                <div class="message-list">
-                    @foreach (var msg in messages.Where(m => m.Contains("[Group")))
-                    {
-                        <p>@msg</p>
-                    }
-                </div>
-                <div class="input-group">
-                    <input @bind="groupMessage" @bind:event="oninput" placeholder="Group message" class="input-field" />
-                    <button @onclick="SendGroup" class="btn btn-primary" disabled="@(string.IsNullOrEmpty(selectedGroup))">Send to Group</button>
-                </div>
+            </div>
+            <div class="input-group">
+                <input @bind="message" @bind:event="oninput" placeholder="Type a message" class="input-field" />
+                <button @onclick="Send" class="btn btn-primary">Send</button>
             </div>
         </div>
 
-        <!-- Sidebar: Users and Status -->
-        <div class="sidebar">
-            <h4>Online Users</h4>
-            <ul class="user-list">
-                @foreach (var user in onlineUsers)
+        <!-- Group Chats Section -->
+        <div class="chat-section">
+            <h4>Group Chats</h4>
+            <div class="message-list">
+                @foreach (var msg in messages.Where(m => m.Contains("[Group")))
                 {
-                    <li>@user</li>
+                    <p>@msg</p>
                 }
-            </ul>
-            <h4>Status</h4>
-            <ul class="status-list">
-                @foreach (var status in statusMessages.TakeLast(5))
+            </div>
+            @if (ChatService.JoinedGroups.Any())
+            {
+                <div class="group-select">
+                    <label>Select group to send to:</label>
+                    <select @bind="selectedGroup" class="input-field">
+                        @foreach (var group in ChatService.JoinedGroups)
+                        {
+                            <option value="@group">@group</option>
+                        }
+                    </select>
+                </div>
+            }
+            <div class="input-group">
+                <input @bind="groupMessage" @bind:event="oninput" placeholder="Group message" class="input-field" />
+                <button @onclick="SendGroup" class="btn btn-primary" disabled="@(string.IsNullOrEmpty(selectedGroup))">Send to Group</button>
+            </div>
+        </div>
+
+        <!-- Join/Leave Group Section -->
+        <div class="group-join-section">
+            <h4>Join/Leave Group</h4>
+            <div class="group-controls">
+                <input @bind="groupName" @bind:event="oninput" placeholder="Group name" class="input-field" />
+                <button @onclick="JoinGroup" class="btn btn-success">Join</button>
+                <button @onclick="LeaveGroup" class="btn btn-warning">Leave</button>
+            </div>
+            <p>Joined groups: @(ChatService.JoinedGroups.Any() ? string.Join(", ", ChatService.JoinedGroups) : "None")</p>
+        </div>
+
+        <!-- Activity Log Section -->
+        <div class="log-window">
+            <h4>Activity Log</h4>
+            <div class="log-list" @ref="logList">
+                @foreach (var entry in statusMessages)
                 {
-                    <li>@status</li>
+                    <p @key="entry.Timestamp.Ticks" class="@GetLogClass(entry.Message)">
+                        @entry.Timestamp.ToString("HH:mm:ss") - @entry.Message
+                    </p>
                 }
-            </ul>
+            </div>
         </div>
     }
 </div>
+
+<script>
+    window.scrollToBottom = (element) => {
+        element.scrollTop = element.scrollHeight;
+    };
+</script>
 
 @code {
     private string currentUser = "";
@@ -103,11 +106,36 @@
     private string? selectedGroup = null;
     private List<string> messages = new();
     private List<string> onlineUsers = new();
-    private List<string> statusMessages = new();
+    private List<StatusEntry> statusMessages = new();
     private bool isJoined = false;
+    private ElementReference logList;
 
-    protected override void OnInitialized()
+    private class StatusEntry
     {
+        public DateTime Timestamp { get; set; }
+        public string Message { get; set; }
+
+        public StatusEntry(string message)
+        {
+            Timestamp = DateTime.Now;
+            Message = message;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Console.WriteLine("Chat page initialized, starting SignalR connection...");
+        try
+        {
+            await ChatService.StartConnectionAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to start SignalR connection: {ex.Message}");
+            statusMessages.Add(new StatusEntry($"Error starting connection: {ex.Message}"));
+            StateHasChanged();
+        }
+
         ChatService.OnMessageReceived += (user, msg) =>
         {
             messages.Add($"[General] {user}: {msg}");
@@ -124,13 +152,15 @@
         };
         ChatService.OnUserJoined += (user) =>
         {
-            statusMessages.Add($"{user} joined the chat");
+            statusMessages.Add(new StatusEntry($"{user} joined the chat"));
             StateHasChanged();
+            ScrollLogToBottom();
         };
         ChatService.OnUserLeft += (user) =>
         {
-            statusMessages.Add($"{user} left the chat");
+            statusMessages.Add(new StatusEntry($"{user} left the chat"));
             StateHasChanged();
+            ScrollLogToBottom();
         };
         ChatService.OnUserListUpdated += (users) =>
         {
@@ -139,37 +169,55 @@
         };
         ChatService.OnGroupMessage += (msg) =>
         {
-            statusMessages.Add(msg);
+            statusMessages.Add(new StatusEntry(msg));
             StateHasChanged();
+            ScrollLogToBottom();
         };
         ChatService.OnConnected += () =>
         {
-            statusMessages.Add("Connected to the server");
+            statusMessages.Add(new StatusEntry("Connected to the server"));
             StateHasChanged();
+            ScrollLogToBottom();
         };
         ChatService.OnDisconnected += () =>
         {
-            statusMessages.Add("Disconnected from the server");
+            statusMessages.Add(new StatusEntry("Disconnected from the server"));
             onlineUsers.Clear();
             isJoined = false;
             StateHasChanged();
+            ScrollLogToBottom();
         };
         ChatService.OnReconnecting += () =>
         {
-            statusMessages.Add("Reconnecting...");
+            statusMessages.Add(new StatusEntry("Reconnecting..."));
             StateHasChanged();
+            ScrollLogToBottom();
         };
         ChatService.OnReconnected += () =>
         {
-            statusMessages.Add("Reconnected!");
+            statusMessages.Add(new StatusEntry("Reconnected!"));
             selectedGroup = null;
             StateHasChanged();
+            ScrollLogToBottom();
         };
         ChatService.OnError += (error) =>
         {
-            statusMessages.Add($"Error: {error}");
+            statusMessages.Add(new StatusEntry($"Error: {error}"));
             StateHasChanged();
+            ScrollLogToBottom();
         };
+    }
+
+    private async Task ScrollLogToBottom()
+    {
+        await JSRuntime.InvokeVoidAsync("scrollToBottom", logList);
+    }
+
+    private string GetLogClass(string status)
+    {
+        if (status.Contains("Error") || status.Contains("Disconnected")) return "log-error";
+        if (status.Contains("joined") || status.Contains("Connected")) return "log-success";
+        return "log-info";
     }
 
     private async Task Join()
@@ -215,18 +263,20 @@
         if (!string.IsNullOrWhiteSpace(groupName))
         {
             await ChatService.LeaveGroup(groupName);
+            statusMessages.Add(new StatusEntry($"{currentUser} left group {groupName}")); // Log every leave
             if (selectedGroup == groupName)
             {
                 selectedGroup = ChatService.JoinedGroups.FirstOrDefault();
-                statusMessages.Add($"You left group {groupName}");
             }
             groupName = "";
+            StateHasChanged(); // Ensure UI updates
+            ScrollLogToBottom();
         }
     }
 
     private async Task SendGroup()
     {
-        if (!string.IsNullOrWhiteSpace(groupMessage) && !string.IsNullOrWhiteSpace(selectedGroup))
+        if (!string.IsNullOrWhiteSpace(groupMessage) && !string.IsNullOrEmpty(selectedGroup))
         {
             await ChatService.SendGroupMessage(selectedGroup, groupMessage);
             groupMessage = "";
@@ -244,8 +294,55 @@
 }
 
 <style>
+    .chat-container {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .chat-section {
+        background-color: #fff;
+        border: 1px solid #ddd;
+        padding: 10px;
+        border-radius: 5px;
+    }
+
+    .message-list {
+        max-height: 200px;
+        overflow-y: auto;
+        margin-bottom: 10px;
+    }
+
+    .input-group {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+
+    .input-field {
+        flex: 1;
+        padding: 5px;
+        border: 1px solid #ddd;
+        border-radius: 3px;
+    }
+
+    .group-join-section {
+        background-color: #f8f9fa;
+        border: 1px solid #ddd;
+        padding: 10px;
+        border-radius: 5px;
+    }
+
+    .group-controls {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+
     .group-select {
         margin-bottom: 10px;
+        display: flex;
+        align-items: center;
     }
 
         .group-select label {
@@ -257,4 +354,68 @@
             border: 1px solid #ddd;
             border-radius: 3px;
         }
+
+    .log-window {
+        width: 100%;
+        max-width: 400px;
+        background-color: #f8f9fa;
+        border: 1px solid #ddd;
+        padding: 10px;
+        border-radius: 5px;
+    }
+
+    .log-list {
+        max-height: 150px;
+        overflow-y: auto;
+        font-size: 12px;
+        background-color: #fff;
+        padding: 5px;
+        border: 1px solid #eee;
+    }
+
+        .log-list p {
+            margin: 2px 0;
+            padding: 5px;
+            border-radius: 3px;
+        }
+
+    .log-error {
+        background-color: #f8d7da;
+        color: #721c24;
+    }
+
+    .log-success {
+        background-color: #d4edda;
+        color: #155724;
+    }
+
+    .log-info {
+        background-color: #cce5ff;
+        color: #004085;
+    }
+
+    .btn {
+        padding: 5px 10px;
+        border-radius: 3px;
+    }
+
+    .btn-primary {
+        background-color: #007bff;
+        color: #fff;
+    }
+
+    .btn-success {
+        background-color: #28a745;
+        color: #fff;
+    }
+
+    .btn-warning {
+        background-color: #ffc107;
+        color: #212529;
+    }
+
+    .btn-danger {
+        background-color: #dc3545;
+        color: #fff;
+    }
 </style>

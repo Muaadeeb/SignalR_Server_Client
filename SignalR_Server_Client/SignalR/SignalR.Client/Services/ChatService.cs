@@ -7,10 +7,10 @@ namespace SignalR.Client.Services
     {
         private readonly HubConnection _connection;
         private string currentUser = "";
-        private List<string> joinedGroups = new(); // Track joined groups
+        private List<string> joinedGroups = new();
         public IReadOnlyList<string> JoinedGroups => joinedGroups.AsReadOnly();
 
-        // Events
+        // Events (unchanged)
         public event Action<string, string>? OnMessageReceived;
         public event Action<string, string>? OnGroupMessageReceived;
         public event Action<string>? OnUserJoined;
@@ -30,7 +30,7 @@ namespace SignalR.Client.Services
                 .WithAutomaticReconnect()
                 .Build();
 
-            // Register handlers
+            // Register handlers (unchanged)
             _connection.On<string, string>("ReceiveMessage", (user, message) =>
                 OnMessageReceived?.Invoke(user, message));
 
@@ -73,7 +73,6 @@ namespace SignalR.Client.Services
                 {
                     await _connection.InvokeAsync("JoinChat", currentUser);
                     Console.WriteLine($"Reconnected and rejoined chat as {currentUser}, ConnectionId: {connectionId}");
-                    // Rejoin all previously joined groups
                     foreach (var group in joinedGroups.ToList())
                     {
                         await _connection.InvokeAsync("JoinGroup", group);
@@ -82,23 +81,34 @@ namespace SignalR.Client.Services
                 }
                 await Task.CompletedTask;
             };
-
-            StartConnectionAsync();
         }
 
-        private async void StartConnectionAsync()
+        public async Task StartConnectionAsync()
         {
-            try
+            if (_connection.State != HubConnectionState.Disconnected)
             {
-                Console.WriteLine("Starting connection...");
-                await _connection.StartAsync();
-                OnConnected?.Invoke();
-                Console.WriteLine($"Client: Connected, ConnectionId: {_connection.ConnectionId}");
+                Console.WriteLine($"Connection already in state: {_connection.State}");
+                return;
             }
-            catch (Exception ex)
+
+            int retries = 3;
+            for (int i = 0; i < retries; i++)
             {
-                Console.WriteLine($"Connection failed: {ex.Message}");
-                OnError?.Invoke($"Connection failed: {ex.Message}");
+                try
+                {
+                    Console.WriteLine("Starting connection...");
+                    await _connection.StartAsync();
+                    OnConnected?.Invoke();
+                    Console.WriteLine($"Client: Connected, ConnectionId: {_connection.ConnectionId}");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Connection attempt {i + 1} failed: {ex.Message}");
+                    OnError?.Invoke($"Connection failed: {ex.Message}");
+                    if (i == retries - 1) throw;
+                    await Task.Delay(1000 * (i + 1));
+                }
             }
         }
 
@@ -150,7 +160,7 @@ namespace SignalR.Client.Services
             {
                 Console.WriteLine($"Client: Joining group {groupName}, ConnectionId: {_connection.ConnectionId}, CurrentUser: {currentUser}");
                 await _connection.InvokeAsync("JoinGroup", groupName);
-                if (!joinedGroups.Contains(groupName)) // Avoid duplicates
+                if (!joinedGroups.Contains(groupName))
                 {
                     joinedGroups.Add(groupName);
                 }
@@ -165,6 +175,7 @@ namespace SignalR.Client.Services
         {
             try
             {
+                Console.WriteLine($"Client: Leaving group {groupName}, ConnectionId: {_connection.ConnectionId}, CurrentUser: {currentUser}");
                 await _connection.InvokeAsync("LeaveGroup", groupName);
                 joinedGroups.Remove(groupName);
             }
@@ -187,9 +198,6 @@ namespace SignalR.Client.Services
             }
         }
 
-
-
-        // State
         public bool IsConnected => _connection.State == HubConnectionState.Connected;
         public string ConnectionId => _connection.ConnectionId ?? "Not connected";
     }
