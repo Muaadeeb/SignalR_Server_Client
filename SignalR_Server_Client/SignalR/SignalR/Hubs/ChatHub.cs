@@ -1,6 +1,8 @@
 ﻿using Microsoft.AspNetCore.SignalR;
 using System.Collections.Concurrent;
 
+
+// FYI -- Server Programs Needs the HUB.  Do not put in the client project.
 namespace SignalR.Hubs
 {
     public class ChatHub : Hub

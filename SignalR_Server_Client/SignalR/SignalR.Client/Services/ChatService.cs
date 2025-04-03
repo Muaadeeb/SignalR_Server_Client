@@ -27,10 +27,14 @@ namespace SignalR.Client.Services
 
         public ChatService()
         {
+            Console.WriteLine($"ChatService instantiated, Not yet connected");
+
             _connection = new HubConnectionBuilder()
                 .WithUrl("https://localhost:7021/hubs/chathub")
                 .WithAutomaticReconnect()
                 .Build();
+
+            Console.WriteLine($"ChatService instantiated, ConnectionId: {_connection.ConnectionId ?? "Not yet connected"}");
 
             // Existing Handlers
             _connection.On<string, string>("ReceiveMessage", (user, message) =>
@@ -94,10 +98,15 @@ namespace SignalR.Client.Services
 
         public async Task StartConnectionAsync()
         {
+            if (_connection.State == HubConnectionState.Connected)
+            {
+                Console.WriteLine($"Connection already connected, ConnectionId: {_connection.ConnectionId}");
+                return;
+            }
             if (_connection.State != HubConnectionState.Disconnected)
             {
-                Console.WriteLine($"Connection already in state: {_connection.State}");
-                return;
+                Console.WriteLine($"Connection in state {_connection.State}, attempting to stop before restart...");
+                await _connection.StopAsync();
             }
 
             int retries = 3;
@@ -105,10 +114,14 @@ namespace SignalR.Client.Services
             {
                 try
                 {
-                    Console.WriteLine("Starting connection...");
+                    Console.WriteLine($"Starting connection (attempt {i + 1})...");
                     await _connection.StartAsync();
                     OnConnected?.Invoke();
                     Console.WriteLine($"Client: Connected, ConnectionId: {_connection.ConnectionId}");
+                    if (!string.IsNullOrEmpty(currentUser))
+                    {
+                        await JoinChat(currentUser); // Rejoin chat if user was set
+                    }
                     return;
                 }
                 catch (Exception ex)
