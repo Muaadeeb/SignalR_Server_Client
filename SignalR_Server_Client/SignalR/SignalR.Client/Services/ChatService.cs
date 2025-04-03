@@ -22,6 +22,7 @@ namespace SignalR.Client.Services
         public event Action? OnReconnecting;
         public event Action? OnReconnected;
         public event Action<string>? OnError;
+        
         // New Event
         public event Action<string, string>? OnPrivateMessageReceived;
 
@@ -29,14 +30,15 @@ namespace SignalR.Client.Services
         {
             Console.WriteLine($"ChatService instantiated, Not yet connected");
 
+            // Initialize SignalR hub connection to "Selected Route" with automatic reconnect.
             _connection = new HubConnectionBuilder()
                 .WithUrl("https://localhost:7021/hubs/chathub")
                 .WithAutomaticReconnect()
                 .Build();
 
             Console.WriteLine($"ChatService instantiated, ConnectionId: {_connection.ConnectionId ?? "Not yet connected"}");
-
-            // Existing Handlers
+            
+            // Register SignalR hub event handlers.
             _connection.On<string, string>("ReceiveMessage", (user, message) =>
                 OnMessageReceived?.Invoke(user, message));
 
@@ -96,6 +98,10 @@ namespace SignalR.Client.Services
             });
         }
 
+        /// <summary>
+        ///   Initiates the SignalR hub connection with retry logic.
+        /// </summary>
+        /// <returns></returns>
         public async Task StartConnectionAsync()
         {
             if (_connection.State == HubConnectionState.Connected)
@@ -142,6 +148,7 @@ namespace SignalR.Client.Services
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"SendMessage failed: {ex.Message}");
                 OnError?.Invoke($"Failed to send message: {ex.Message}");
             }
         }
@@ -172,6 +179,7 @@ namespace SignalR.Client.Services
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"LeaveChat failed: {ex.Message}");
                 OnError?.Invoke($"Failed to leave chat: {ex.Message}");
             }
         }
@@ -189,6 +197,7 @@ namespace SignalR.Client.Services
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"JoinGroup failed: {ex.Message}");
                 OnError?.Invoke($"Failed to join group: {ex.Message}");
             }
         }
@@ -203,6 +212,7 @@ namespace SignalR.Client.Services
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"LeaveGroup failed: {ex.Message}");
                 OnError?.Invoke($"Failed to leave group: {ex.Message}");
             }
         }
@@ -216,6 +226,7 @@ namespace SignalR.Client.Services
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"SendGroupMessage failed: {ex.Message}");
                 OnError?.Invoke($"Failed to send group message: {ex.Message}");
             }
         }
@@ -229,6 +240,7 @@ namespace SignalR.Client.Services
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"SendPrivateMessage failed: {ex.Message}");
                 OnError?.Invoke($"Failed to send private message: {ex.Message}");
             }
         }
