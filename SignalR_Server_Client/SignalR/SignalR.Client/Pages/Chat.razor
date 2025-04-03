@@ -18,6 +18,8 @@
     - When Used: In action methods (e.g., LeaveGroup()) after state updates to ensure the latest log entry is visible.
     - Why: Async method due to JS interop; must be awaited to ensure scrolling happens after the UI reflects the new state, 
         avoiding race conditions where scroll occurs before render.
+    - Note: Not called directly in SignalR event handlers to avoid JS interop during SSR prerendering; deferred via _needsScroll 
+        and OnAfterRenderAsync instead.
 
     3. await InvokeAsync(StateHasChanged)
     - Use Case: Asynchronously queues a render on the UI thread (synchronization context), ensuring thread safety for SignalR event handlers.
@@ -333,7 +335,14 @@
 
     private async Task ScrollLogToBottom()
     {
-        await JsRuntime.InvokeVoidAsync("scrollToBottom", _logList);
+        try
+        {
+            await JsRuntime.InvokeVoidAsync("scrollToBottom", _logList);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ScrollLogToBottom failed: {ex.Message}");
+        }
     }
 
     private static string GetLogClass(string status)
