@@ -12,15 +12,11 @@ internal class Program
     {
         var builder = WebAssemblyHostBuilder.CreateDefault(args);
 
-        // This is the correct place for registration of the ChatService.
+        // New Approach due to Server/WebAssembly interaction - Service Configurations.
+        // Register SignalR chat services for client-side hub communication.
+        // Uses transient lifetime via shared ServiceConfiguration for WebAssembly mode.
         // This should always go in the client project, not the server project (for interactive BOTH Server/Client solution).
         // But according to Server/Client we need to create a ServiceConfiguration which is available to both Client and Server.  
-        // Tried this by itself and it throws errors on page refreshing.
-
-        // Replacing this with the Shared Service Configurations.
-        //builder.Services.AddScoped<IChatService, ChatService>();  
-
-        // New Approach due to Server/WebAssembly interaction - Service Configurations.
         builder.Services.AddChatServices();
 
         await builder.Build().RunAsync();
