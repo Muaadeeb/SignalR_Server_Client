@@ -7,7 +7,8 @@ public static class ServiceConfiguration
 {
     public static IServiceCollection AddChatServices(this IServiceCollection services)
     {
-        //services.AddScoped<IChatService, ChatService>();
+        // Since the Client is driving this process I am making this Transient.  Normally if the server were
+        // to drive this process (Server Side registration) then the Service would favor a "Scoped" approach.
         services.AddTransient<IChatService, ChatService>();
         return services;
     }

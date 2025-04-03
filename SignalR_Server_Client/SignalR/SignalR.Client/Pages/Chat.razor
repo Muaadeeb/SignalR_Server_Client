@@ -1,7 +1,7 @@
 ﻿@page "/chat"
 @using SignalR.Client.Services.Interfaces
 @inject IChatService ChatService
-@inject IJSRuntime JSRuntime
+@inject IJSRuntime JsRuntime
 
 <div class="chat-container">
     <h3>Chat Room</h3>
@@ -11,22 +11,22 @@
     }
     else
     {
-        <p>Debug: IsConnected = @ChatService.IsConnected, CurrentUser = "@currentUser", IsJoined = @isJoined</p>
+        <p>Debug: IsConnected = @ChatService.IsConnected, CurrentUser = "@_currentUser", IsJoined = @_isJoined</p>
         @if (!ChatService.IsConnected)
         {
             <p class="status">Connecting to chat... <span class="spinner"></span></p>
         }
-        else if (!isJoined)
+        else if (!_isJoined)
         {
             <div class="join-section">
-                <input @bind="currentUser" @bind:event="oninput" placeholder="Enter your name" class="input-field" />
+                <input @bind="_currentUser" @bind:event="oninput" placeholder="Enter your name" class="input-field" />
                 <button @onclick="Join" class="btn btn-primary">Join Chat</button>
             </div>
         }
         else
         {
             <div class="user-info">
-                <p>Logged in as: <strong>@currentUser</strong> (ID: @ChatService.ConnectionId)</p>
+                <p>Logged in as: <strong>@_currentUser</strong> (ID: @ChatService.ConnectionId)</p>
                 <button @onclick="Leave" class="btn btn-danger">Leave Chat</button>
             </div>
 
@@ -34,13 +34,13 @@
             <div class="chat-section">
                 <h4>General Chat</h4>
                 <div class="message-list">
-                    @foreach (var msg in messages.Where(m => m.StartsWith("[General]")))
+                    @foreach (var msg in _messages.Where(m => m.StartsWith("[General]")))
                     {
                         <p>@msg</p>
                     }
                 </div>
                 <div class="input-group">
-                    <input @bind="message" @bind:event="oninput" placeholder="Type a message" class="input-field" />
+                    <input @bind="_message" @bind:event="oninput" placeholder="Type a message" class="input-field" />
                     <button @onclick="Send" class="btn btn-primary">Send</button>
                 </div>
             </div>
@@ -49,7 +49,7 @@
             <div class="chat-section">
                 <h4>Group Chats</h4>
                 <div class="message-list">
-                    @foreach (var msg in messages.Where(m => m.Contains("[Group")))
+                    @foreach (var msg in _messages.Where(m => m.Contains("[Group")))
                     {
                         <p>@msg</p>
                     }
@@ -58,7 +58,7 @@
                 {
                     <div class="group-select">
                         <label>Select group to send to:</label>
-                        <select @bind="selectedGroup" class="input-field">
+                        <select @bind="_selectedGroup" class="input-field">
                             @foreach (var group in ChatService.JoinedGroups)
                             {
                                 <option value="@group">@group</option>
@@ -67,8 +67,8 @@
                     </div>
                 }
                 <div class="input-group">
-                    <input @bind="groupMessage" @bind:event="oninput" placeholder="Group message" class="input-field" />
-                    <button @onclick="SendGroup" class="btn btn-primary" disabled="@(string.IsNullOrEmpty(selectedGroup))">Send to Group</button>
+                    <input @bind="_groupMessage" @bind:event="oninput" placeholder="Group message" class="input-field" />
+                    <button @onclick="SendGroup" class="btn btn-primary" disabled="@(string.IsNullOrEmpty(_selectedGroup))">Send to Group</button>
                 </div>
             </div>
 
@@ -76,17 +76,17 @@
             <div class="chat-section">
                 <h4>Private Chats</h4>
                 <div class="message-list">
-                    @foreach (var msg in privateMessages)
+                    @foreach (var msg in _privateMessages)
                     {
                         <p>@msg</p>
                     }
                 </div>
-                @if (onlineUsers.Any(u => u != currentUser))
+                @if (_onlineUsers.Any(u => u != _currentUser))
                 {
                     <div class="user-select">
                         <label>Select user to message:</label>
-                        <select @bind="selectedUser" class="input-field">
-                            @foreach (var user in onlineUsers.Where(u => u != currentUser))
+                        <select @bind="_selectedUser" class="input-field">
+                            @foreach (var user in _onlineUsers.Where(u => u != _currentUser))
                             {
                                 <option value="@user">@user</option>
                             }
@@ -94,8 +94,8 @@
                     </div>
                 }
                 <div class="input-group">
-                    <input @bind="privateMessage" @bind:event="oninput" placeholder="Private message" class="input-field" />
-                    <button @onclick="SendPrivate" class="btn btn-primary" disabled="@(string.IsNullOrEmpty(selectedUser))">Send Private</button>
+                    <input @bind="_privateMessage" @bind:event="oninput" placeholder="Private message" class="input-field" />
+                    <button @onclick="SendPrivate" class="btn btn-primary" disabled="@(string.IsNullOrEmpty(_selectedUser))">Send Private</button>
                 </div>
             </div>
 
@@ -103,7 +103,7 @@
             <div class="group-join-section">
                 <h4>Join/Leave Group</h4>
                 <div class="group-controls">
-                    <input @bind="groupName" @bind:event="oninput" placeholder="Group name" class="input-field" />
+                    <input @bind="_groupName" @bind:event="oninput" placeholder="Group name" class="input-field" />
                     <button @onclick="JoinGroup" class="btn btn-success">Join</button>
                     <button @onclick="LeaveGroup" class="btn btn-warning">Leave</button>
                 </div>
@@ -113,8 +113,8 @@
             <!-- Activity Log Section -->
             <div class="log-window">
                 <h4>Activity Log</h4>
-                <div class="log-list" @ref="logList">
-                    @foreach (var entry in statusMessages)
+                <div class="log-list" @ref="_logList">
+                    @foreach (var entry in _statusMessages)
                     {
                         <p @key="entry.Timestamp.Ticks" class="@GetLogClass(entry.Message)">
                             @entry.Timestamp.ToString("HH:mm:ss") - @entry.Message
@@ -133,19 +133,19 @@
 </script>
 
 @code {
-    private string currentUser = "";
-    private string message = "";
-    private string groupName = "";
-    private string groupMessage = "";
-    private string privateMessage = "";
-    private string? selectedGroup = null;
-    private string? selectedUser = null;
-    private List<string> messages = new();
-    private List<string> privateMessages = new();
-    private List<string> onlineUsers = new();
-    private List<StatusEntry> statusMessages = new();
-    private bool isJoined = false;
-    private ElementReference logList;
+    private string _currentUser = "";
+    private string _message = "";
+    private string _groupName = "";
+    private string _groupMessage = "";
+    private string _privateMessage = "";
+    private string? _selectedGroup = null;
+    private string? _selectedUser = null;
+    private readonly List<string> _messages = new();
+    private readonly List<string> _privateMessages = new();
+    private List<string> _onlineUsers = new();
+    private readonly List<StatusEntry> _statusMessages = new();
+    private bool _isJoined = false;
+    private ElementReference _logList;
 
     private class StatusEntry
     {
@@ -164,8 +164,8 @@
         if (ChatService == null)
         {
             Console.WriteLine("ChatService is null on initialization!");
-            statusMessages.Add(new StatusEntry("Error: ChatService not injected"));
-            StateHasChanged();
+            _statusMessages.Add(new StatusEntry("Error: ChatService not injected"));
+            StateHasChanged(); // Keep as is
             return;
         }
 
@@ -177,17 +177,18 @@
         catch (Exception ex)
         {
             Console.WriteLine($"Failed to start SignalR connection: {ex.Message}");
-            statusMessages.Add(new StatusEntry($"Error starting connection: {ex.Message}"));
-            StateHasChanged();
+            _statusMessages.Add(new StatusEntry($"Error starting connection: {ex.Message}"));
+            StateHasChanged(); // Keep as is
         }
 
-        ChatService.OnMessageReceived += (user, msg) =>
+        ChatService.OnMessageReceived += async (user, msg) =>
         {
-            messages.Add($"[General] {user}: {msg}");
+            _messages.Add($"[General] {user}: {msg}");
             Console.WriteLine($"General message added: [General] {user}: {msg}");
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged);
         };
-        ChatService.OnGroupMessageReceived += (user, msg) =>
+
+        ChatService.OnGroupMessageReceived += async (user, msg) =>
         {
             var parts = msg.Split('|', 2);
             if (parts.Length == 2)
@@ -197,95 +198,112 @@
                 if (ChatService.JoinedGroups.Contains(groupName))
                 {
                     string formattedMsg = $"[Group:{groupName}] {user}: {messageText}";
-                    messages.Add(formattedMsg);
+                    _messages.Add(formattedMsg);
                     Console.WriteLine($"Group message added: {formattedMsg}");
-                    StateHasChanged();
+                    await InvokeAsync(StateHasChanged);
                 }
             }
         };
-        ChatService.OnUserJoined += (user) =>
+
+        ChatService.OnUserJoined += async (user) =>
         {
-            statusMessages.Add(new StatusEntry($"{user} joined the chat"));
-            StateHasChanged();
-            ScrollLogToBottom();
+            _statusMessages.Add(new StatusEntry($"{user} joined the chat"));
+            await InvokeAsync(StateHasChanged);
+            _needsScroll = true; // Flag for scrolling
         };
-        ChatService.OnUserLeft += (user) =>
+
+        ChatService.OnUserLeft += async (user) =>
         {
-            statusMessages.Add(new StatusEntry($"{user} left the chat"));
-            StateHasChanged();
-            ScrollLogToBottom();
+            _statusMessages.Add(new StatusEntry($"{user} left the chat"));
+            await InvokeAsync(StateHasChanged);
+            _needsScroll = true;
         };
-        ChatService.OnUserListUpdated += (users) =>
+
+        ChatService.OnUserListUpdated += async (users) =>
         {
-            onlineUsers = users;
-            if (selectedUser == null || !onlineUsers.Contains(selectedUser))
+            _onlineUsers = users;
+            if (_selectedUser == null || !_onlineUsers.Contains(_selectedUser))
             {
-                selectedUser = onlineUsers.FirstOrDefault(u => u != currentUser);
+                _selectedUser = _onlineUsers.FirstOrDefault(u => u != _currentUser);
             }
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged);
         };
-        ChatService.OnGroupMessage += (msg) =>
+
+        ChatService.OnGroupMessage += async (msg) =>
         {
-            statusMessages.Add(new StatusEntry(msg));
-            StateHasChanged();
-            ScrollLogToBottom();
+            _statusMessages.Add(new StatusEntry(msg));
+            await InvokeAsync(StateHasChanged);
+            _needsScroll = true;
         };
-        ChatService.OnConnected += () =>
+
+        ChatService.OnConnected += async () =>
         {
-            statusMessages.Add(new StatusEntry("Connected to the server"));
-            StateHasChanged();
-            ScrollLogToBottom();
+            _statusMessages.Add(new StatusEntry("Connected to the server"));
+            await InvokeAsync(StateHasChanged);
+            _needsScroll = true;
         };
-        ChatService.OnDisconnected += () =>
+
+        ChatService.OnDisconnected += async () =>
         {
-            statusMessages.Add(new StatusEntry("Disconnected from the server"));
-            onlineUsers.Clear();
-            isJoined = false;
-            StateHasChanged();
-            ScrollLogToBottom();
+            _statusMessages.Add(new StatusEntry("Disconnected from the server"));
+            _onlineUsers.Clear();
+            _isJoined = false;
+            await InvokeAsync(StateHasChanged);
+            _needsScroll = true;
         };
-        ChatService.OnReconnecting += () =>
+
+        ChatService.OnReconnecting += async () =>
         {
-            statusMessages.Add(new StatusEntry("Reconnecting..."));
-            StateHasChanged();
-            ScrollLogToBottom();
+            _statusMessages.Add(new StatusEntry("Reconnecting..."));
+            await InvokeAsync(StateHasChanged);
+            _needsScroll = true;
         };
-        ChatService.OnReconnected += () =>
+
+        ChatService.OnReconnected += async () =>
         {
-            statusMessages.Add(new StatusEntry("Reconnected!"));
-            selectedGroup = null;
-            selectedUser = null;
-            StateHasChanged();
-            ScrollLogToBottom();
+            _statusMessages.Add(new StatusEntry("Reconnected!"));
+            _selectedGroup = null;
+            _selectedUser = null;
+            await InvokeAsync(StateHasChanged);
+            _needsScroll = true;
         };
-        ChatService.OnError += (error) =>
+
+        ChatService.OnError += async (error) =>
         {
-            statusMessages.Add(new StatusEntry($"Error: {error}"));
-            StateHasChanged();
-            ScrollLogToBottom();
+            _statusMessages.Add(new StatusEntry($"Error: {error}"));
+            await InvokeAsync(StateHasChanged);
+            _needsScroll = true;
         };
-        ChatService.OnPrivateMessageReceived += (fromUser, msg) =>
+
+        ChatService.OnPrivateMessageReceived += async (fromUser, msg) =>
         {
-            if (fromUser != currentUser)
+            if (fromUser != _currentUser)
             {
-                privateMessages.Add($"[Private] {fromUser}: {msg}");
+                _privateMessages.Add($"[Private] {fromUser}: {msg}");
             }
-            statusMessages.Add(new StatusEntry($"Private message from {fromUser}: {msg}"));
-            Console.WriteLine($"Private message received: [Private] {fromUser} to {currentUser}: {msg}");
-            StateHasChanged();
-            ScrollLogToBottom();
+            _statusMessages.Add(new StatusEntry($"Private message from {fromUser}: {msg}"));
+            Console.WriteLine($"Private message received: [Private] {fromUser} to {_currentUser}: {msg}");
+            await InvokeAsync(StateHasChanged);
+            _needsScroll = true;
         };
     }
 
-    protected override Task OnAfterRenderAsync(bool firstRender)
+    private bool _needsScroll = false; // Add this field at the class level
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         Console.WriteLine($"Chat.razor rendered, firstRender: {firstRender}");
-        return base.OnAfterRenderAsync(firstRender);
+        if (_needsScroll && ChatService != null) // Check ChatService to avoid null ref during SSR
+        {
+            await ScrollLogToBottom();
+            _needsScroll = false;
+        }
+        await base.OnAfterRenderAsync(firstRender);
     }
 
     private async Task ScrollLogToBottom()
     {
-        await JSRuntime.InvokeVoidAsync("scrollToBottom", logList);
+        await JsRuntime.InvokeVoidAsync("scrollToBottom", _logList);
     }
 
     private string GetLogClass(string status)
@@ -297,49 +315,49 @@
 
     private async Task Join()
     {
-        Console.WriteLine($"Join method entered, currentUser = '{currentUser}'");
-        if (!string.IsNullOrWhiteSpace(currentUser))
+        Console.WriteLine($"Join method entered, currentUser = '{_currentUser}'");
+        if (!string.IsNullOrWhiteSpace(_currentUser))
         {
-            Console.WriteLine($"Join clicked for {currentUser}");
-            await ChatService.JoinChat(currentUser);
+            Console.WriteLine($"Join clicked for {_currentUser}");
+            await ChatService.JoinChat(_currentUser);
             Console.WriteLine("JoinChat completed");
-            isJoined = true;
+            _isJoined = true;
         }
     }
 
     private async Task Send()
     {
-        if (!string.IsNullOrWhiteSpace(message))
+        if (!string.IsNullOrWhiteSpace(_message))
         {
-            await ChatService.SendMessage(currentUser, message);
-            message = "";
+            await ChatService.SendMessage(_currentUser, _message);
+            _message = "";
         }
     }
 
     private async Task JoinGroup()
     {
-        if (!string.IsNullOrWhiteSpace(groupName))
+        if (!string.IsNullOrWhiteSpace(_groupName))
         {
-            await ChatService.JoinGroup(groupName);
-            if (selectedGroup == null && ChatService.JoinedGroups.Contains(groupName))
+            await ChatService.JoinGroup(_groupName);
+            if (_selectedGroup == null && ChatService.JoinedGroups.Contains(_groupName))
             {
-                selectedGroup = groupName;
+                _selectedGroup = _groupName;
             }
-            groupName = "";
+            _groupName = "";
         }
     }
 
     private async Task LeaveGroup()
     {
-        if (!string.IsNullOrWhiteSpace(groupName))
+        if (!string.IsNullOrWhiteSpace(_groupName))
         {
-            await ChatService.LeaveGroup(groupName);
-            statusMessages.Add(new StatusEntry($"{currentUser} left group {groupName}"));
-            if (selectedGroup == groupName)
+            await ChatService.LeaveGroup(_groupName);
+            _statusMessages.Add(new StatusEntry($"{_currentUser} left group {_groupName}"));
+            if (_selectedGroup == _groupName)
             {
-                selectedGroup = ChatService.JoinedGroups.FirstOrDefault();
+                _selectedGroup = ChatService.JoinedGroups.FirstOrDefault();
             }
-            groupName = "";
+            _groupName = "";
             StateHasChanged();
             ScrollLogToBottom();
         }
@@ -347,30 +365,30 @@
 
     private async Task SendGroup()
     {
-        if (!string.IsNullOrWhiteSpace(groupMessage) && !string.IsNullOrEmpty(selectedGroup))
+        if (!string.IsNullOrWhiteSpace(_groupMessage) && !string.IsNullOrEmpty(_selectedGroup))
         {
-            await ChatService.SendGroupMessage(selectedGroup, groupMessage);
-            groupMessage = "";
+            await ChatService.SendGroupMessage(_selectedGroup, _groupMessage);
+            _groupMessage = "";
         }
     }
 
     private async Task SendPrivate()
     {
-        if (!string.IsNullOrWhiteSpace(privateMessage) && !string.IsNullOrEmpty(selectedUser))
+        if (!string.IsNullOrWhiteSpace(_privateMessage) && !string.IsNullOrEmpty(_selectedUser))
         {
-            await ChatService.SendPrivateMessage(selectedUser, privateMessage);
-            privateMessage = "";
+            await ChatService.SendPrivateMessage(_selectedUser, _privateMessage);
+            _privateMessage = "";
         }
     }
 
     private async Task Leave()
     {
-        await ChatService.LeaveChat(currentUser);
-        currentUser = "";
-        groupName = "";
-        selectedGroup = null;
-        selectedUser = null;
-        isJoined = false;
+        await ChatService.LeaveChat(_currentUser);
+        _currentUser = "";
+        _groupName = "";
+        _selectedGroup = null;
+        _selectedUser = null;
+        _isJoined = false;
     }
 }
 
@@ -426,15 +444,15 @@
         align-items: center;
     }
 
-        .group-select label, .user-select label {
-            margin-right: 10px;
-        }
+    .group-select label, .user-select label {
+        margin-right: 10px;
+    }
 
-        .group-select select, .user-select select {
-            padding: 5px;
-            border: 1px solid #ddd;
-            border-radius: 3px;
-        }
+    .group-select select, .user-select select {
+        padding: 5px;
+        border: 1px solid #ddd;
+        border-radius: 3px;
+    }
 
     .log-window {
         width: 100%;
@@ -454,11 +472,11 @@
         border: 1px solid #eee;
     }
 
-        .log-list p {
-            margin: 2px 0;
-            padding: 5px;
-            border-radius: 3px;
-        }
+    .log-list p {
+        margin: 2px 0;
+        padding: 5px;
+        border-radius: 3px;
+    }
 
     .log-error {
         background-color: #f8d7da;
