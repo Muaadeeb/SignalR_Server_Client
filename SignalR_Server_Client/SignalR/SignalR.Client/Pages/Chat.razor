@@ -18,8 +18,6 @@
     - When Used: In action methods (e.g., LeaveGroup()) after state updates to ensure the latest log entry is visible.
     - Why: Async method due to JS interop; must be awaited to ensure scrolling happens after the UI reflects the new state, 
         avoiding race conditions where scroll occurs before render.
-    - Note: Not called directly in SignalR event handlers to avoid JS interop during SSR prerendering; deferred via _needsScroll 
-        and OnAfterRenderAsync instead.
 
     3. await InvokeAsync(StateHasChanged)
     - Use Case: Asynchronously queues a render on the UI thread (synchronization context), ensuring thread safety for SignalR event handlers.
@@ -124,6 +122,7 @@
                     <div class="user-select">
                         <label>Select user to message:</label>
                         <select @bind="_selectedUser" @bind:event="onchange" class="input-field">
+                            <option value="">Select User</option>
                             @foreach (var user in _onlineUsers.Where(u => u != _currentUser))
                             {
                                 <option value="@user">@user</option>
@@ -184,7 +183,7 @@
     private readonly List<StatusEntry> _statusMessages = [];
     private bool _isJoined = false;
     private ElementReference _logList;
-    private bool _needsScroll = false; // Add this field at the class level
+    private bool _needsScroll = false;
 
     private class StatusEntry(string message)
     {
@@ -198,7 +197,7 @@
         {
             Console.WriteLine("ChatService is null on initialization!");
             _statusMessages.Add(new StatusEntry("Error: ChatService not injected"));
-            StateHasChanged(); // Keep as is
+            StateHasChanged();
             return;
         }
 
@@ -211,7 +210,7 @@
         {
             Console.WriteLine($"Failed to start SignalR connection: {ex.Message}");
             _statusMessages.Add(new StatusEntry($"Error starting connection: {ex.Message}"));
-            StateHasChanged(); // Keep as is
+            StateHasChanged();
         }
 
         ChatService.OnMessageReceived += async (user, msg) =>
@@ -224,26 +223,25 @@
         ChatService.OnGroupMessageReceived += async (user, msg) =>
         {
             var parts = msg.Split('|', 2);
-
-            if (parts.Length != 2) return;
-
-            var groupName = parts[0];
-            var messageText = parts[1];
-
-            if (!ChatService.JoinedGroups.Contains(groupName)) return;
-
-            var formattedMsg = $"[Group:{groupName}] {user}: {messageText}";
-            _messages.Add(formattedMsg);
-
-            Console.WriteLine($"Group message added: {formattedMsg}");
-            await InvokeAsync(StateHasChanged);
+            if (parts.Length == 2)
+            {
+                string groupName = parts[0];
+                string messageText = parts[1];
+                if (ChatService.JoinedGroups.Contains(groupName))
+                {
+                    string formattedMsg = $"[Group:{groupName}] {user}: {messageText}";
+                    _messages.Add(formattedMsg);
+                    Console.WriteLine($"Group message added: {formattedMsg}");
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
         };
 
         ChatService.OnUserJoined += async (user) =>
         {
             _statusMessages.Add(new StatusEntry($"{user} joined the chat"));
             await InvokeAsync(StateHasChanged);
-            _needsScroll = true; // Flag for scrolling
+            _needsScroll = true;
         };
 
         ChatService.OnUserLeft += async (user) =>
@@ -256,9 +254,9 @@
         ChatService.OnUserListUpdated += async (users) =>
         {
             _onlineUsers = users;
-            if (_selectedUser == null || !_onlineUsers.Contains(_selectedUser))
+            if (_selectedUser != null && !_onlineUsers.Contains(_selectedUser))
             {
-                _selectedUser = _onlineUsers.FirstOrDefault(u => u != _currentUser);
+                _selectedUser = null; // Reset only if selected user leaves
             }
             await InvokeAsync(StateHasChanged);
         };
@@ -335,14 +333,7 @@
 
     private async Task ScrollLogToBottom()
     {
-        try
-        {
-            await JsRuntime.InvokeVoidAsync("scrollToBottom", _logList);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"ScrollLogToBottom failed: {ex.Message}");
-        }
+        await JsRuntime.InvokeVoidAsync("scrollToBottom", _logList);
     }
 
     private static string GetLogClass(string status)
@@ -418,6 +409,7 @@
             Console.WriteLine($"Sending private message to {_selectedUser}: {_privateMessage}");
             await ChatService.SendPrivateMessage(_selectedUser, _privateMessage);
             _privateMessage = "";
+            _selectedUser = null; // Reset to force re-selection
         }
     }
 
@@ -485,15 +477,15 @@
         align-items: center;
     }
 
-    .group-select label, .user-select label {
-        margin-right: 10px;
-    }
+        .group-select label, .user-select label {
+            margin-right: 10px;
+        }
 
-    .group-select select, .user-select select {
-        padding: 5px;
-        border: 1px solid #ddd;
-        border-radius: 3px;
-    }
+        .group-select select, .user-select select {
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
 
     .log-window {
         width: 100%;
@@ -513,11 +505,11 @@
         border: 1px solid #eee;
     }
 
-    .log-list p {
-        margin: 2px 0;
-        padding: 5px;
-        border-radius: 3px;
-    }
+        .log-list p {
+            margin: 2px 0;
+            padding: 5px;
+            border-radius: 3px;
+        }
 
     .log-error {
         background-color: #f8d7da;
