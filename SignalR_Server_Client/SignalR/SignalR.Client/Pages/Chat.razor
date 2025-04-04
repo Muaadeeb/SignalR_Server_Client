@@ -123,7 +123,7 @@
                         <label>Select user to message:</label>
                         <select @bind="_selectedUser" @bind:event="onchange" class="input-field">
                             <option value="">Select User</option>
-                            @foreach (var user in _onlineUsers.Where(u => u != _currentUser))
+                            @foreach (var user in _onlineUsers.Where(u => u != _currentUser).OrderBy(u => u))
                             {
                                 <option value="@user">@user</option>
                             }
@@ -223,18 +223,18 @@
         ChatService.OnGroupMessageReceived += async (user, msg) =>
         {
             var parts = msg.Split('|', 2);
-            if (parts.Length == 2)
-            {
-                string groupName = parts[0];
-                string messageText = parts[1];
-                if (ChatService.JoinedGroups.Contains(groupName))
-                {
-                    string formattedMsg = $"[Group:{groupName}] {user}: {messageText}";
-                    _messages.Add(formattedMsg);
-                    Console.WriteLine($"Group message added: {formattedMsg}");
-                    await InvokeAsync(StateHasChanged);
-                }
-            }
+            if (parts.Length != 2) return;
+
+            var groupName = parts[0];
+            var messageText = parts[1];
+
+            if (!ChatService.JoinedGroups.Contains(groupName)) return;
+
+            var formattedMsg = $"[Group:{groupName}] {user}: {messageText}";
+            _messages.Add(formattedMsg);
+
+            Console.WriteLine($"Group message added: {formattedMsg}");
+            await InvokeAsync(StateHasChanged);
         };
 
         ChatService.OnUserJoined += async (user) =>
@@ -477,15 +477,15 @@
         align-items: center;
     }
 
-        .group-select label, .user-select label {
-            margin-right: 10px;
-        }
+    .group-select label, .user-select label {
+        margin-right: 10px;
+    }
 
-        .group-select select, .user-select select {
-            padding: 5px;
-            border: 1px solid #ddd;
-            border-radius: 3px;
-        }
+    .group-select select, .user-select select {
+        padding: 5px;
+        border: 1px solid #ddd;
+        border-radius: 3px;
+    }
 
     .log-window {
         width: 100%;
@@ -505,11 +505,11 @@
         border: 1px solid #eee;
     }
 
-        .log-list p {
-            margin: 2px 0;
-            padding: 5px;
-            border-radius: 3px;
-        }
+    .log-list p {
+        margin: 2px 0;
+        padding: 5px;
+        border-radius: 3px;
+    }
 
     .log-error {
         background-color: #f8d7da;
