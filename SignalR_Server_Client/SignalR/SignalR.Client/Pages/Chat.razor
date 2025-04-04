@@ -123,7 +123,7 @@
                 {
                     <div class="user-select">
                         <label>Select user to message:</label>
-                        <select @bind="_selectedUser" class="input-field">
+                        <select @bind="_selectedUser" @bind:event="onchange" class="input-field">
                             @foreach (var user in _onlineUsers.Where(u => u != _currentUser))
                             {
                                 <option value="@user">@user</option>
@@ -415,6 +415,7 @@
     {
         if (!string.IsNullOrWhiteSpace(_privateMessage) && !string.IsNullOrEmpty(_selectedUser))
         {
+            Console.WriteLine($"Sending private message to {_selectedUser}: {_privateMessage}");
             await ChatService.SendPrivateMessage(_selectedUser, _privateMessage);
             _privateMessage = "";
         }
