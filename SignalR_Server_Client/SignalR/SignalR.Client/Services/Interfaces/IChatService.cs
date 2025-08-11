@@ -25,10 +25,10 @@ public interface IChatService
     bool IsConnected { get; }
     string ConnectionId { get; }
 
-    // Existing Methods
+    // Updated Methods
     Task StartConnectionAsync();
     Task SendMessage(string user, string message);
-    Task JoinChat(string user);
+    Task JoinChat(string user, string language = "en"); // Updated to include language parameter
     Task LeaveChat(string user);
     Task JoinGroup(string groupName);
     Task LeaveGroup(string groupName);

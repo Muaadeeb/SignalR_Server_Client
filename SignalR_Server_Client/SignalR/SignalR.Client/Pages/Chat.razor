@@ -56,13 +56,23 @@
         {
             <div class="join-section">
                 <input @bind="_currentUser" @bind:event="oninput" placeholder="Enter your name" class="input-field" />
+                <select @bind="_selectedLanguage" class="input-field" style="margin-left: 10px;">
+                    <option value="en">English</option>
+                    <option value="es">Spanish</option>
+                    <option value="fr">French</option>
+                    <option value="de">German</option>
+                    <option value="zh">Chinese</option>
+                    <option value="ar">Arabic</option>
+                    <option value="ru">Russian</option>
+                    @* <option value="hi">Hindi</option> *@
+                </select>
                 <button @onclick="Join" class="btn btn-primary">Join Chat</button>
             </div>
         }
         else
         {
             <div class="user-info">
-                <p>Logged in as: <strong>@_currentUser</strong> (ID: @ChatService.ConnectionId)</p>
+                <p>Logged in as: <strong>@_currentUser</strong> (Language: @_selectedLanguage, ID: @ChatService.ConnectionId)</p>
                 <button @onclick="Leave" class="btn btn-danger">Leave Chat</button>
             </div>
 
@@ -70,7 +80,7 @@
             <div class="chat-section">
                 <h4>General Chat</h4>
                 <div class="message-list">
-                    @foreach (var msg in _messages.Where(m => m.StartsWith("[General]")))
+                    @foreach (var msg in _messages)
                     {
                         <p>@msg</p>
                     }
@@ -170,6 +180,18 @@
 </script>
 
 @code {
+    // Private fields for component state management
+    // _currentUser: Stores the user's chosen name
+    // _message, _groupMessage, _privateMessage: Input fields for different message types
+    // _groupName: Input for group names in join/leave operations
+    // _selectedGroup, _selectedUser: Selected values for group/private messaging
+    // _selectedLanguage: User's chosen native language code (e.g., "en" for English)
+    // _messages, _privateMessages: Lists to store received messages for display
+    // _onlineUsers: List of currently online users
+    // _statusMessages: Log entries for activity tracking
+    // _isJoined: Flag indicating if the user has joined the chat
+    // _logList: Reference to the log DOM element for scrolling
+    // _needsScroll: Flag to trigger scrolling after state changes
     private string _currentUser = "";
     private string _message = "";
     private string _groupName = "";
@@ -177,6 +199,7 @@
     private string _privateMessage = "";
     private string? _selectedGroup = null;
     private string? _selectedUser = null;
+    private string? _selectedLanguage = "en"; // Default to English; can be expanded with more options
     private readonly List<string> _messages = [];
     private readonly List<string> _privateMessages = [];
     private List<string> _onlineUsers = new();
@@ -185,12 +208,17 @@
     private ElementReference _logList;
     private bool _needsScroll = false;
 
+    // Nested class for status log entries
+    // Timestamp: Records when the entry was created
+    // Message: The log message content
     private class StatusEntry(string message)
     {
         public DateTime Timestamp { get; set; } = DateTime.Now;
         public string Message { get; set; } = message;
     }
 
+    // Lifecycle method: Initializes the component and sets up SignalR event handlers
+    // Maintenance Note: Ensure all event handlers are properly unsubscribed in Dispose if needed for memory management
     protected override async Task OnInitializedAsync()
     {
         if (ChatService == null)
@@ -213,13 +241,18 @@
             StateHasChanged();
         }
 
+        // Event handler for general messages
+        // Adds message to list and triggers UI update and scroll
         ChatService.OnMessageReceived += async (user, msg) =>
         {
             _messages.Add($"[General] {user}: {msg}");
             Console.WriteLine($"General message added: [General] {user}: {msg}");
             await InvokeAsync(StateHasChanged);
+            _needsScroll = true;
         };
 
+        // Event handler for group messages
+        // Parses and formats the message, adds to list if in joined group
         ChatService.OnGroupMessageReceived += async (user, msg) =>
         {
             var parts = msg.Split('|', 2);
@@ -232,11 +265,12 @@
 
             var formattedMsg = $"[Group:{groupName}] {user}: {messageText}";
             _messages.Add(formattedMsg);
-
             Console.WriteLine($"Group message added: {formattedMsg}");
             await InvokeAsync(StateHasChanged);
+            _needsScroll = true;
         };
 
+        // Event handler for user join notifications
         ChatService.OnUserJoined += async (user) =>
         {
             _statusMessages.Add(new StatusEntry($"{user} joined the chat"));
@@ -244,6 +278,7 @@
             _needsScroll = true;
         };
 
+        // Event handler for user leave notifications
         ChatService.OnUserLeft += async (user) =>
         {
             _statusMessages.Add(new StatusEntry($"{user} left the chat"));
@@ -251,6 +286,8 @@
             _needsScroll = true;
         };
 
+        // Event handler for online user list updates
+        // Resets selected user if they leave
         ChatService.OnUserListUpdated += async (users) =>
         {
             _onlineUsers = users;
@@ -261,6 +298,7 @@
             await InvokeAsync(StateHasChanged);
         };
 
+        // Event handler for group-related status messages
         ChatService.OnGroupMessage += async (msg) =>
         {
             _statusMessages.Add(new StatusEntry(msg));
@@ -268,6 +306,7 @@
             _needsScroll = true;
         };
 
+        // Event handler for connection established
         ChatService.OnConnected += async () =>
         {
             _statusMessages.Add(new StatusEntry("Connected to the server"));
@@ -275,6 +314,7 @@
             _needsScroll = true;
         };
 
+        // Event handler for disconnection
         ChatService.OnDisconnected += async () =>
         {
             _statusMessages.Add(new StatusEntry("Disconnected from the server"));
@@ -284,6 +324,7 @@
             _needsScroll = true;
         };
 
+        // Event handler for reconnection attempt
         ChatService.OnReconnecting += async () =>
         {
             _statusMessages.Add(new StatusEntry("Reconnecting..."));
@@ -291,6 +332,7 @@
             _needsScroll = true;
         };
 
+        // Event handler for successful reconnection
         ChatService.OnReconnected += async () =>
         {
             _statusMessages.Add(new StatusEntry("Reconnected!"));
@@ -300,6 +342,7 @@
             _needsScroll = true;
         };
 
+        // Event handler for errors
         ChatService.OnError += async (error) =>
         {
             _statusMessages.Add(new StatusEntry($"Error: {error}"));
@@ -307,6 +350,8 @@
             _needsScroll = true;
         };
 
+        // Event handler for private messages
+        // Adds to private messages list and status log
         ChatService.OnPrivateMessageReceived += async (fromUser, msg) =>
         {
             if (fromUser != _currentUser)
@@ -320,6 +365,8 @@
         };
     }
 
+    // Lifecycle method: Handles post-render logic, such as scrolling the log
+    // Maintenance Note: Use _needsScroll flag to defer JS interop until after render, avoiding DOM not ready errors
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         Console.WriteLine($"Chat.razor rendered, firstRender: {firstRender}");
@@ -331,11 +378,15 @@
         await base.OnAfterRenderAsync(firstRender);
     }
 
+    // JS interop method: Scrolls the log element to the bottom
+    // Maintenance Note: Ensure the script tag with window.scrollToBottom is present in the component
     private async Task ScrollLogToBottom()
     {
         await JsRuntime.InvokeVoidAsync("scrollToBottom", _logList);
     }
 
+    // Utility method: Determines CSS class for log entries based on content
+    // Maintenance Note: Expand with more classes if additional log types (e.g., warning) are needed
     private static string GetLogClass(string status)
     {
         if (status.Contains("Error") || status.Contains("Disconnected")) return "log-error";
@@ -343,18 +394,23 @@
         return "log-info";
     }
 
+    // Action method: Handles joining the chat with username and language
+    // Validates inputs and invokes ChatService.JoinChat
+    // Maintenance Note: Consider adding client-side validation for language codes or persisting language in local storage for reconnections
     private async Task Join()
     {
-        Console.WriteLine($"Join method entered, currentUser = '{_currentUser}'");
-        if (!string.IsNullOrWhiteSpace(_currentUser))
+        Console.WriteLine($"Join method entered, currentUser = '{_currentUser}', language = '{_selectedLanguage}'");
+        if (!string.IsNullOrWhiteSpace(_currentUser) && _selectedLanguage != null)
         {
-            Console.WriteLine($"Join clicked for {_currentUser}");
-            await ChatService.JoinChat(_currentUser);
+            Console.WriteLine($"Join clicked for {_currentUser} with language {_selectedLanguage}");
+            await ChatService.JoinChat(_currentUser, _selectedLanguage); // Pass language to service
             Console.WriteLine("JoinChat completed");
             _isJoined = true;
         }
     }
 
+    // Action method: Sends a general message
+    // Clears input field after sending
     private async Task Send()
     {
         if (!string.IsNullOrWhiteSpace(_message))
@@ -364,6 +420,8 @@
         }
     }
 
+    // Action method: Joins a group
+    // Updates selected group if necessary
     private async Task JoinGroup()
     {
         if (!string.IsNullOrWhiteSpace(_groupName))
@@ -377,6 +435,8 @@
         }
     }
 
+    // Action method: Leaves a group
+    // Updates status log and resets selected group if needed
     private async Task LeaveGroup()
     {
         if (!string.IsNullOrWhiteSpace(_groupName))
@@ -393,6 +453,7 @@
         }
     }
 
+    // Action method: Sends a message to the selected group
     private async Task SendGroup()
     {
         if (!string.IsNullOrWhiteSpace(_groupMessage) && !string.IsNullOrEmpty(_selectedGroup))
@@ -402,6 +463,8 @@
         }
     }
 
+    // Action method: Sends a private message
+    // Resets selected user after sending
     private async Task SendPrivate()
     {
         if (!string.IsNullOrWhiteSpace(_privateMessage) && !string.IsNullOrEmpty(_selectedUser))
@@ -413,6 +476,8 @@
         }
     }
 
+    // Action method: Leaves the chat
+    // Resets all state fields
     private async Task Leave()
     {
         await ChatService.LeaveChat(_currentUser);
