@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.SignalR.Client;
 using SignalR.Client.Services.Interfaces;
+using SignalR.Client.Shared.Models; // Ensure this is present for ChatMessageDto
 
 namespace SignalR.Client.Services
 {
@@ -10,7 +11,6 @@ namespace SignalR.Client.Services
     public class ChatService : IChatService
     {
         // The SignalR hub connection instance
-        // Maintenance Note: Configured with automatic reconnect; monitor for performance in production
         private readonly HubConnection _connection;
 
         // Current user's name for chat operations
@@ -20,10 +20,12 @@ namespace SignalR.Client.Services
         private List<string> joinedGroups = new();
         public IReadOnlyList<string> JoinedGroups => joinedGroups.AsReadOnly();
 
-        // Events for notifying subscribers (e.g., UI components) of chat updates
-        // Maintenance Note: These events are raised asynchronously; ensure subscribers handle thread safety
-        public event Action<string, string>? OnMessageReceived;
-        public event Action<string, string>? OnGroupMessageReceived;
+        // Updated Events for DTO-based messaging
+        public event Action<ChatMessageDto>? OnMessageReceived;
+        public event Action<ChatMessageDto>? OnGroupMessageReceived;
+        public event Action<ChatMessageDto>? OnPrivateMessageReceived;
+
+        // Existing Events
         public event Action<string>? OnUserJoined;
         public event Action<string>? OnUserLeft;
         public event Action<List<string>>? OnUserListUpdated;
@@ -33,7 +35,6 @@ namespace SignalR.Client.Services
         public event Action? OnReconnecting;
         public event Action? OnReconnected;
         public event Action<string>? OnError;
-        public event Action<string, string>? OnPrivateMessageReceived;
 
         /// <summary>
         /// Initializes the ChatService with SignalR hub configuration.
@@ -42,8 +43,6 @@ namespace SignalR.Client.Services
         {
             Console.WriteLine($"ChatService instantiated, Not yet connected");
 
-            // Build the hub connection with URL and automatic reconnect
-            // Maintenance Note: Update the URL for production deployment; consider adding authentication if needed
             _connection = new HubConnectionBuilder()
                 .WithUrl("https://localhost:7021/hubs/chathub")
                 .WithAutomaticReconnect()
@@ -51,16 +50,15 @@ namespace SignalR.Client.Services
 
             Console.WriteLine($"ChatService instantiated, ConnectionId: {_connection.ConnectionId ?? "Not yet connected"}");
 
-            // Register event handlers for hub events
-            // Maintenance Note: Handlers invoke events; ensure no memory leaks by unsubscribing if service is disposed
-            _connection.On<string, string>("ReceiveMessage", (user, message) =>
-                OnMessageReceived?.Invoke(user, message));
+            // Register event handlers for hub events using ChatMessageDto
+            _connection.On<ChatMessageDto>("ReceiveMessage", (message) =>
+                OnMessageReceived?.Invoke(message));
 
-            _connection.On<string, string, string>("ReceiveGroupMessage", (user, groupName, message) =>
-            {
-                Console.WriteLine($"Received group message from {user} in {groupName}: {message}");
-                OnGroupMessageReceived?.Invoke(user, $"{groupName}|{message}");
-            });
+            _connection.On<ChatMessageDto>("ReceiveGroupMessage", (message) =>
+                OnGroupMessageReceived?.Invoke(message));
+
+            _connection.On<ChatMessageDto>("ReceivePrivateMessage", (message) =>
+                OnPrivateMessageReceived?.Invoke(message));
 
             _connection.On<string>("UserJoined", (user) =>
                 OnUserJoined?.Invoke(user));
@@ -93,7 +91,7 @@ namespace SignalR.Client.Services
                 OnReconnected?.Invoke();
                 if (!string.IsNullOrEmpty(currentUser))
                 {
-                    await JoinChat(currentUser, "en"); // Default language on reconnect; consider persisting language
+                    await JoinChat(currentUser, "en");
                     Console.WriteLine($"Reconnected and rejoined chat as {currentUser}, ConnectionId: {connectionId}");
                     foreach (var group in joinedGroups.ToList())
                     {
@@ -103,19 +101,8 @@ namespace SignalR.Client.Services
                 }
                 await Task.CompletedTask;
             };
-
-            _connection.On<string, string>("ReceivePrivateMessage", (fromUser, message) =>
-            {
-                Console.WriteLine($"Received private message from {fromUser}: {message}");
-                OnPrivateMessageReceived?.Invoke(fromUser, message);
-            });
         }
 
-        /// <summary>
-        /// Starts the SignalR connection with retry logic.
-        /// </summary>
-        /// <returns>A task representing the connection attempt.</returns>
-        // Maintenance Note: Retries 3 times with exponential backoff; adjust retries or delay for production
         public async Task StartConnectionAsync()
         {
             if (_connection.State == HubConnectionState.Connected)
@@ -150,11 +137,6 @@ namespace SignalR.Client.Services
             }
         }
 
-        /// <summary>
-        /// Sends a general message to the hub.
-        /// </summary>
-        /// <param name="user">The sending user.</param>
-        /// <param name="message">The message content.</param>
         public async Task SendMessage(string user, string message)
         {
             try
@@ -168,12 +150,6 @@ namespace SignalR.Client.Services
             }
         }
 
-        /// <summary>
-        /// Joins the chat with the specified user and language.
-        /// </summary>
-        /// <param name="user">The username to join with.</param>
-        /// <param name="language">The preferred language code (default "en").</param>
-        // Maintenance Note: Language is sent to server for translation; consider validation of language codes
         public async Task JoinChat(string user, string language = "en")
         {
             try
@@ -190,10 +166,6 @@ namespace SignalR.Client.Services
             }
         }
 
-        /// <summary>
-        /// Leaves the chat for the specified user.
-        /// </summary>
-        /// <param name="user">The username to leave with.</param>
         public async Task LeaveChat(string user)
         {
             try
@@ -209,10 +181,6 @@ namespace SignalR.Client.Services
             }
         }
 
-        /// <summary>
-        /// Joins a group.
-        /// </summary>
-        /// <param name="groupName">The name of the group to join.</param>
         public async Task JoinGroup(string groupName)
         {
             try
@@ -231,10 +199,6 @@ namespace SignalR.Client.Services
             }
         }
 
-        /// <summary>
-        /// Leaves a group.
-        /// </summary>
-        /// <param name="groupName">The name of the group to leave.</param>
         public async Task LeaveGroup(string groupName)
         {
             try
@@ -250,11 +214,6 @@ namespace SignalR.Client.Services
             }
         }
 
-        /// <summary>
-        /// Sends a message to a group.
-        /// </summary>
-        /// <param name="groupName">The group name.</param>
-        /// <param name="message">The message content.</param>
         public async Task SendGroupMessage(string groupName, string message)
         {
             try
@@ -269,11 +228,6 @@ namespace SignalR.Client.Services
             }
         }
 
-        /// <summary>
-        /// Sends a private message.
-        /// </summary>
-        /// <param name="toUser">The recipient username.</param>
-        /// <param name="message">The message content.</param>
         public async Task SendPrivateMessage(string toUser, string message)
         {
             try
@@ -288,10 +242,7 @@ namespace SignalR.Client.Services
             }
         }
 
-        // Property to check if connected
         public bool IsConnected => _connection.State == HubConnectionState.Connected;
-
-        // Property to get connection ID
         public string ConnectionId => _connection.ConnectionId ?? "Not connected";
     }
 }

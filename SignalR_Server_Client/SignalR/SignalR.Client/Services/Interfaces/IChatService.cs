@@ -1,14 +1,20 @@
 ﻿namespace SignalR.Client.Services.Interfaces;
 
+using SignalR.Client.Shared.Models;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
+
+
 public interface IChatService
 {
+    // Updated Events to use ChatMessageDto
+    event Action<ChatMessageDto>? OnMessageReceived;
+    event Action<ChatMessageDto>? OnGroupMessageReceived;
+    event Action<ChatMessageDto>? OnPrivateMessageReceived;
+    
     // Existing Events
-    event Action<string, string>? OnMessageReceived;
-    event Action<string, string>? OnGroupMessageReceived;
     event Action<string>? OnUserJoined;
     event Action<string>? OnUserLeft;
     event Action<List<string>>? OnUserListUpdated;
@@ -18,7 +24,7 @@ public interface IChatService
     event Action? OnReconnecting;
     event Action? OnReconnected;
     event Action<string>? OnError;
-    event Action<string, string>? OnPrivateMessageReceived;
+    
 
     // Existing Properties
     IReadOnlyList<string> JoinedGroups { get; }

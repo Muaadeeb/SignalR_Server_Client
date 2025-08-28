@@ -10,6 +10,9 @@ using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
+using SignalR.Client.Shared.Models;
+using Azure;
+using Azure.AI.TextAnalytics;
 
 namespace SignalR.Hubs;
 
@@ -22,6 +25,7 @@ public class ChatHub : Hub
 
     private readonly IConfiguration _configuration; // For reading app settings
     private readonly string _activeTranslator; // "DeepL" or "Azure" to switch translators
+    private TextAnalyticsClient? _textAnalyticsClient;
 
     /// <summary>
     /// Initializes the ChatHub with configuration for translator selection.
@@ -68,11 +72,24 @@ public class ChatHub : Hub
         try
         {
             Console.WriteLine($"SendMessage: {user} - {message} at {DateTime.Now}");
+            var sentiment = await AnalyzeSentimentAsync(message); // Call once
+
             foreach (var connId in ConnectedUsers.Keys)
             {
                 var targetLang = UserLanguages.GetValueOrDefault(connId, "en");
                 var translated = await TranslateAsync(message, targetLang);
-                await Clients.Client(connId).SendAsync("ReceiveMessage", user, translated);
+
+                var payload = new ChatMessageDto
+                {
+                    User = user,
+                    Message = translated,
+                    Sentiment = sentiment.Sentiment,
+                    Positive = sentiment.Positive,
+                    Neutral = sentiment.Neutral,
+                    Negative = sentiment.Negative
+                };
+
+                await Clients.Client(connId).SendAsync("ReceiveMessage", payload);
             }
         }
         catch (Exception ex)
@@ -164,11 +181,25 @@ public class ChatHub : Hub
                 Console.WriteLine($"SendGroupMessage: {username} to {groupName} - {message} at {DateTime.Now}");
                 if (GroupMembers.TryGetValue(groupName, out var members))
                 {
+                    var sentiment = await AnalyzeSentimentAsync(message); // Call once per message
+
                     foreach (var connId in members)
                     {
                         var targetLang = UserLanguages.GetValueOrDefault(connId, "en");
                         var translated = await TranslateAsync(message, targetLang);
-                        await Clients.Client(connId).SendAsync("ReceiveGroupMessage", username, groupName, translated);
+
+                        var payload = new ChatMessageDto
+                        {
+                            User = username,
+                            Group = groupName,
+                            Message = translated,
+                            Sentiment = sentiment.Sentiment,
+                            Positive = sentiment.Positive,
+                            Neutral = sentiment.Neutral,
+                            Negative = sentiment.Negative
+                        };
+
+                        await Clients.Client(connId).SendAsync("ReceiveGroupMessage", payload);
                     }
                 }
                 else
@@ -197,18 +228,49 @@ public class ChatHub : Hub
                 var toConnectionId = ConnectedUsers.FirstOrDefault(x => x.Value == toUser).Key;
                 if (toConnectionId != null)
                 {
+                    var sentiment = await AnalyzeSentimentAsync(message); // Call once per message
+
+                    // To recipient
                     var targetLang = UserLanguages.GetValueOrDefault(toConnectionId, "en");
                     var translated = await TranslateAsync(message, targetLang);
-                    Console.WriteLine($"SendPrivateMessage: {fromUser} to {toUser} - {translated} at {DateTime.Now}");
-                    await Clients.Client(toConnectionId).SendAsync("ReceivePrivateMessage", fromUser, translated);
+
+                    var payloadTo = new ChatMessageDto
+                    {
+                        User = fromUser,
+                        Message = translated,
+                        Sentiment = sentiment.Sentiment,
+                        Positive = sentiment.Positive,
+                        Neutral = sentiment.Neutral,
+                        Negative = sentiment.Negative
+                    };
+
+                    await Clients.Client(toConnectionId).SendAsync("ReceivePrivateMessage", payloadTo);
+
+                    // To sender (echo)
                     var senderLang = UserLanguages.GetValueOrDefault(Context.ConnectionId, "en");
                     var senderTranslated = (senderLang == targetLang) ? translated : await TranslateAsync(message, senderLang);
-                    await Clients.Client(Context.ConnectionId).SendAsync("ReceivePrivateMessage", fromUser, senderTranslated);
+
+                    var payloadFrom = new ChatMessageDto
+                    {
+                        User = fromUser,
+                        Message = senderTranslated,
+                        Sentiment = sentiment.Sentiment,
+                        Positive = sentiment.Positive,
+                        Neutral = sentiment.Neutral,
+                        Negative = sentiment.Negative
+                    };
+
+                    await Clients.Client(Context.ConnectionId).SendAsync("ReceivePrivateMessage", payloadFrom);
                 }
                 else
                 {
                     Console.WriteLine($"SendPrivateMessage: User {toUser} not found at {DateTime.Now}");
-                    await Clients.Client(Context.ConnectionId).SendAsync("ReceivePrivateMessage", "System", $"{toUser} is not online");
+                    await Clients.Client(Context.ConnectionId).SendAsync("ReceivePrivateMessage", new ChatMessageDto
+                    {
+                        User = "System",
+                        Message = $"{toUser} is not online",
+                        Sentiment = "unknown"
+                    });
                 }
             }
             else
@@ -308,4 +370,94 @@ public class ChatHub : Hub
         }
         return text; // Fallback to original
     }
+
+    private void EnsureTextAnalyticsClient()
+    {
+        if (_textAnalyticsClient == null)
+        {
+            var endpoint = Environment.GetEnvironmentVariable("AZURE_ENDPOINT_COGSERVICE");
+            var apiKey = Environment.GetEnvironmentVariable("AZURE_COGSERVICE_API_KEY");
+            if (string.IsNullOrEmpty(endpoint) || string.IsNullOrEmpty(apiKey))
+            {
+                throw new InvalidOperationException("Azure Cognitive Service endpoint or API key not found.");
+            }
+            _textAnalyticsClient = new TextAnalyticsClient(new Uri(endpoint), new AzureKeyCredential(apiKey));
+        }
+    }
+
+    private async Task<(string Sentiment, double Positive, double Neutral, double Negative)> AnalyzeSentimentAsync(string text)
+    {
+        try
+        {
+            EnsureTextAnalyticsClient();
+            var response = await _textAnalyticsClient!.AnalyzeSentimentAsync(text, "en");
+            var sentiment = response.Value.Sentiment.ToString().ToLowerInvariant();
+            var scores = response.Value.ConfidenceScores;
+            return (sentiment, scores.Positive, scores.Neutral, scores.Negative);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Sentiment analysis failed for text: {text}, Error: {ex.Message} at {DateTime.Now}");
+            return ("unknown", 0, 0, 0);
+        }
+    }
+
+    //private async Task<(string Sentiment, double Positive, double Neutral, double Negative)> AnalyzeSentimentAsync(string text)
+    //{
+    //    try
+    //    {
+    //        var endpoint = Environment.GetEnvironmentVariable("AZURE_ENDPOINT_COGSERVICE")?.TrimEnd('/');
+    //        var apiKey = Environment.GetEnvironmentVariable("AZURE_COGSERVICE_API_KEY");
+    //        var region = Environment.GetEnvironmentVariable("AZURE_REGION") ?? "eastus";
+
+    //        if (string.IsNullOrEmpty(endpoint) || string.IsNullOrEmpty(apiKey))
+    //        {
+    //            Console.WriteLine($"Azure Cognitive Service endpoint or API key not found at {DateTime.Now}");
+    //            return ("unknown", 0, 0, 0);
+    //        }
+
+    //        var url = $"{endpoint}/text/analytics/v3.2/sentiment";
+    //        var requestBody = new
+    //        {
+    //            documents = new[] 
+    //            {
+    //                new { id = "1", language = "en", text }
+    //            }
+    //        };
+
+    //        var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
+    //        var request = new HttpRequestMessage(HttpMethod.Post, url);
+    //        request.Headers.Add("Ocp-Apim-Subscription-Key", apiKey);
+    //        request.Headers.Add("Ocp-Apim-Subscription-Region", region);
+    //        request.Content = content;
+
+    //        Console.WriteLine($"Sending Sentiment Analysis request: Text={text} at {DateTime.Now}");
+    //        var response = await _httpClient.SendAsync(request);
+    //        Console.WriteLine($"Sentiment Analysis Response: Status={response.StatusCode} at {DateTime.Now}");
+
+    //        if (response.IsSuccessStatusCode)
+    //        {
+    //            var jsonResponse = await response.Content.ReadAsStringAsync();
+    //            Console.WriteLine($"Sentiment Analysis Response Body: {jsonResponse} at {DateTime.Now}");
+    //            using var document = JsonDocument.Parse(jsonResponse);
+    //            var doc = document.RootElement.GetProperty("documents")[0];
+    //            var sentiment = doc.GetProperty("sentiment").GetString() ?? "unknown";
+    //            var confidence = doc.GetProperty("confidenceScores");
+    //            double positive = confidence.GetProperty("positive").GetDouble();
+    //            double neutral = confidence.GetProperty("neutral").GetDouble();
+    //            double negative = confidence.GetProperty("negative").GetDouble();
+    //            return (sentiment, positive, neutral, negative);
+    //        }
+    //        else
+    //        {
+    //            var errorDetails = await response.Content.ReadAsStringAsync();
+    //            Console.WriteLine($"Sentiment Analysis Error Details: {errorDetails} at {DateTime.Now}");
+    //        }
+    //    }
+    //    catch (Exception ex)
+    //    {
+    //        Console.WriteLine($"Sentiment analysis failed for text: {text}, Error: {ex.Message} at {DateTime.Now}");
+    //    }
+    //    return ("unknown", 0, 0, 0);
+    //}
 }
