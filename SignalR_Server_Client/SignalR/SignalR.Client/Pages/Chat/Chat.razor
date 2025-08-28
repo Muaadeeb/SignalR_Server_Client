@@ -35,8 +35,10 @@
 *@
 
 @page "/chat"
+@using SignalR.Client.Pages.Chat.Components
 @using SignalR.Client.Services.Interfaces
 @using SignalR.Client.Shared.Models
+
 @inject IChatService ChatService
 @inject IJSRuntime JsRuntime
 
@@ -55,144 +57,42 @@
         }
         else if (!_isJoined)
         {
-            <div class="join-section">
-                <input @bind="_currentUser" @bind:event="oninput" placeholder="Enter your name" class="input-field" />
-                <select @bind="_selectedLanguage" class="input-field" style="margin-left: 10px;">
-                    <option value="en">English</option>
-                    <option value="es">Spanish</option>
-                    <option value="fr">French</option>
-                    <option value="de">German</option>
-                    <option value="zh">Chinese</option>
-                    <option value="ar">Arabic</option>
-                    <option value="ru">Russian</option>
-                </select>
-                <button @onclick="Join" class="btn btn-primary">Join Chat</button>
-            </div>
+            <ChatJoin @bind-User="_currentUser"
+                      @bind-Language="_selectedLanguage"
+                      OnJoin="Join" />
         }
         else
         {
-            <div class="user-info">
-                <p>Logged in as: <strong>@_currentUser</strong> (Language: @_selectedLanguage, ID: @ChatService.ConnectionId)</p>
-                <button @onclick="Leave" class="btn btn-danger">Leave Chat</button>
-            </div>
+            <ChatUserInfo User=@_currentUser
+                          Language=@_selectedLanguage
+                          ConnectionId=@ChatService.ConnectionId
+                          OnLeave="Leave" />
+            
+            <ChatGeneral Messages="_messages"
+                         @bind-Message="_message"
+                         OnSend="HandleSendGeneral" />
 
-            <!-- General Chat Section -->
-            <div class="chat-section">
-                <h4>General Chat</h4>
-                <div class="message-list">
-                    @foreach (var msg in _messages.Where(m => string.IsNullOrEmpty(m.Group)))
-                    {
-                        <p>
-                            <b>@(msg.User ?? "?")</b>: @(msg.Message ?? "")
-                            <span style="margin-left:1em;">
-                                <i>Sentiment: @(msg.Sentiment ?? "unknown")</i>
-                                <span style="font-size:smaller;">
-                                    (Pos: @msg.Positive:F2, Neu: @msg.Neutral:F2, Neg: @msg.Negative:F2)
-                                </span>
-                            </span>
-                        </p>
-                    }
-                </div>
-                <div class="input-group">
-                    <input @bind="_message" @bind:event="oninput" placeholder="Type a message" class="input-field" />
-                    <button @onclick="Send" class="btn btn-primary">Send</button>
-                </div>
-            </div>
+            <ChatGroupJoin @bind-GroupName="_groupName"
+                           JoinedGroups="ChatService.JoinedGroups"
+                           OnJoin="JoinGroup"
+                           OnLeave="LeaveGroup" />
 
-            <!-- Group Chats Section -->
-            <div class="chat-section">
-                <h4>Group Chats</h4>
-                <div class="message-list">
-                    @foreach (var msg in _messages.Where(m => !string.IsNullOrEmpty(m.Group)))
-                    {
-                        <p>
-                            <b>[Group:@(msg.Group ?? "?")] @(msg.User ?? "?")</b>: @(msg.Message ?? "")
-                            <span style="margin-left:1em;">
-                                <i>Sentiment: @(msg.Sentiment ?? "unknown")</i>
-                                <span style="font-size:smaller;">
-                                    (Pos: @msg.Positive:F2, Neu: @msg.Neutral:F2, Neg: @msg.Negative:F2)
-                                </span>
-                            </span>
-                        </p>
-                    }
-                </div>
-                @if (ChatService.JoinedGroups.Any())
-                {
-                    <div class="group-select">
-                        <label>Select group to send to:</label>
-                        <select @bind="_selectedGroup" class="input-field">
-                            @foreach (var group in ChatService.JoinedGroups)
-                            {
-                                <option value="@group">@group</option>
-                            }
-                        </select>
-                    </div>
-                }
-                <div class="input-group">
-                    <input @bind="_groupMessage" @bind:event="oninput" placeholder="Group message" class="input-field" />
-                    <button @onclick="SendGroup" class="btn btn-primary" disabled="@(string.IsNullOrEmpty(_selectedGroup))">Send to Group</button>
-                </div>
-            </div>
+            <ChatGroups Messages="_messages"
+                        JoinedGroups="ChatService.JoinedGroups"
+                        @bind-SelectedGroup="_selectedGroup"
+                        @bind-GroupMessage="_groupMessage"
+                        OnSend="HandleSendGroup" />
+            
+            <ChatPrivate Messages="_privateMessages"
+                         OnlineUsers="_onlineUsers.Distinct().Where(u => u != _currentUser).ToList()"
+                         CurrentUser="_currentUser"
+                         @bind-SelectedUser="_selectedUser"
+                         @bind-PrivateMessage="_privateMessage"
+                         OnSend="HandleSendPrivate" />
 
-            <!-- Private Chats Section -->
-            <div class="chat-section">
-                <h4>Private Chats</h4>
-                <div class="message-list">
-                    @foreach (var msg in _privateMessages)
-                    {
-                        <p>
-                            <b>@(msg.User ?? "?")</b>: @(msg.Message ?? "")
-                            <span style="margin-left:1em;">
-                                <i>Sentiment: @(msg.Sentiment ?? "unknown")</i>
-                                <span style="font-size:smaller;">
-                                    (Pos: @msg.Positive:F2, Neu: @msg.Neutral:F2, Neg: @msg.Negative:F2)
-                                </span>
-                            </span>
-                        </p>
-                    }
-                </div>
-                @if (_onlineUsers.Any(u => u != _currentUser))
-                {
-                    <div class="user-select">
-                        <label>Select user to message:</label>
-                        <select @bind="_selectedUser" @bind:event="onchange" class="input-field">
-                            <option value="">Select User</option>
-                            @foreach (var user in _onlineUsers.Where(u => u != _currentUser).Distinct().OrderBy(u => u))
-                            {
-                                <option value="@user">@user</option>
-                            }
-                        </select>
-                    </div>
-                }
-                <div class="input-group">
-                    <input @bind="_privateMessage" @bind:event="oninput" placeholder="Private message" class="input-field" />
-                    <button @onclick="SendPrivate" class="btn btn-primary" disabled="@(string.IsNullOrEmpty(_selectedUser))">Send Private</button>
-                </div>
-            </div>
-
-            <!-- Join/Leave Group Section -->
-            <div class="group-join-section">
-                <h4>Join/Leave Group</h4>
-                <div class="group-controls">
-                    <input @bind="_groupName" @bind:event="oninput" placeholder="Group name" class="input-field" />
-                    <button @onclick="JoinGroup" class="btn btn-success">Join</button>
-                    <button @onclick="LeaveGroup" class="btn btn-warning">Leave</button>
-                </div>
-                <p>Joined groups: @(ChatService.JoinedGroups.Any() ? string.Join(", ", ChatService.JoinedGroups) : "None")</p>
-            </div>
-
-            <!-- Activity Log Section -->
-            <div class="log-window">
-                <h4>Activity Log</h4>
-                <div class="log-list" @ref="_logList">
-                    @foreach (var entry in _statusMessages)
-                    {
-                        <p @key="entry.Timestamp.Ticks" class="@GetLogClass(entry.Message)">
-                            @entry.Timestamp.ToString("HH:mm:ss") - @entry.Message
-                        </p>
-                    }
-                </div>
-            </div>
+            <ChatLog LogEntries="_statusMessages.ToList()"
+                     LogListRef="_logList"
+                     GetLogClass="GetLogClass" />
         }
     }
 </div>
@@ -220,13 +120,7 @@
     private ElementReference _logList;
     private bool _needsScroll = false;
 
-    private class StatusEntry(string message)
-    {
-        public DateTime Timestamp { get; set; } = DateTime.Now;
-        public string Message { get; set; } = message;
-    }
-
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnInitializedAsync()  
     {
         if (ChatService == null)
         {
@@ -369,8 +263,17 @@
     {
         if (!string.IsNullOrWhiteSpace(_currentUser) && _selectedLanguage != null)
         {
-            await ChatService.JoinChat(_currentUser, _selectedLanguage);
-            _isJoined = true;
+            try
+            {
+                await ChatService.JoinChat(_currentUser, _selectedLanguage);
+                _isJoined = true;
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                _statusMessages.Add(new StatusEntry($"Join failed: {ex.Message}"));
+                StateHasChanged();
+            }
         }
     }
 
@@ -429,6 +332,26 @@
             _privateMessage = "";
             _selectedUser = null;
         }
+    }
+
+    private async Task HandleSendGeneral(string message)
+    {
+        await ChatService.SendMessage(_currentUser, message);
+        _message = "";
+    }
+
+    private async Task HandleSendGroup((string Group, string Message) data)
+    {
+        await ChatService.SendGroupMessage(data.Group, data.Message);
+        _groupMessage = "";
+
+    }
+
+    private async Task HandleSendPrivate((string ToUser, string Message) data)
+    {
+        await ChatService.SendPrivateMessage(data.ToUser, data.Message);
+        _privateMessage = "";
+        _selectedUser = null;
     }
 
     private async Task Leave()

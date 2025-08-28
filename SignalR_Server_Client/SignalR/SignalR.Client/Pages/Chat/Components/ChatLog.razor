@@ -1,0 +1,21 @@
+﻿@using SignalR.Client.Shared.Models
+<div class="log-window">
+    <h4>Activity Log</h4>
+    <div class="log-list" @ref="LogListRef">
+        @if (LogEntries != null)
+        {
+            @foreach (var entry in LogEntries)
+            {
+                <p @key="entry.Timestamp.Ticks" class="@GetLogClass?.Invoke(entry.Message)">
+                    @entry.Timestamp.ToString("HH:mm:ss") - @entry.Message
+                </p>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<StatusEntry>? LogEntries { get; set; }
+    [Parameter] public ElementReference LogListRef { get; set; }
+    [Parameter] public Func<string, string>? GetLogClass { get; set; }
+}

@@ -1,0 +1,59 @@
+﻿@using SignalR.Client.Shared.Models
+
+<div class="chat-section">
+    <h4>Group Chats</h4>
+    <div class="message-list" @ref="_logList">
+        @if (Messages != null)
+        {
+            @foreach (var msg in Messages.Where(m => !string.IsNullOrEmpty(m.Group)))
+            {
+                <p>
+                    <b>[Group:@(msg.Group ?? "?")] @(msg.User ?? "?")</b>: @(msg.Message ?? "")
+                    <span style="margin-left:1em;">
+                        <i>Sentiment: @(msg.Sentiment ?? "unknown")</i>
+                        <span style="font-size:smaller;">
+                            (Pos: @msg.Positive.ToString("F2"), Neu: @msg.Neutral.ToString("F2"), Neg: @msg.Negative.ToString("F2"))
+                        </span>
+                    </span>
+                </p>
+            }
+        }
+    </div>
+    @if (JoinedGroups?.Any() == true)
+    {
+        <div class="group-select">
+            <label>Select group to send to:</label>
+            <select @bind="SelectedGroup" class="input-field">
+                @foreach (var group in JoinedGroups)
+                {
+                    <option value="@group">@group</option>
+                }
+            </select>
+        </div>
+    }
+    <div class="input-group">
+        <input @bind="GroupMessage" @bind:event="oninput" placeholder="Group message" class="input-field" />
+        <button @onclick="SendClicked" class="btn btn-primary" disabled="@(string.IsNullOrEmpty(SelectedGroup))">Send to Group</button>
+    </div>
+</div>
+
+@code {
+    [Parameter] public List<ChatMessageDto> Messages { get; set; } = new();
+    [Parameter] public IReadOnlyList<string> JoinedGroups { get; set; } = Array.Empty<string>();
+    [Parameter] public string? SelectedGroup { get; set; }
+    [Parameter] public EventCallback<string?> SelectedGroupChanged { get; set; }
+    [Parameter] public string GroupMessage { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> GroupMessageChanged { get; set; }
+    [Parameter] public EventCallback<(string Group, string Message)> OnSend { get; set; }
+
+    private ElementReference _logList = default!;
+
+    private async Task SendClicked()
+    {
+        if (!string.IsNullOrWhiteSpace(GroupMessage) && !string.IsNullOrEmpty(SelectedGroup))
+        {
+            await OnSend.InvokeAsync((SelectedGroup, GroupMessage));
+            await GroupMessageChanged.InvokeAsync(string.Empty); // Clear input after send
+        }
+    }
+}

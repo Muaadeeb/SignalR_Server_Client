@@ -1,0 +1,45 @@
+﻿@using Microsoft.AspNetCore.Components
+
+<div class="group-join-section">
+    <h4>Join/Leave Group</h4>
+    <div class="group-controls">
+        <input value="@GroupName" @oninput="OnGroupNameInput" placeholder="Group name" class="input-field" />
+        <button @onclick="OnJoinClicked" class="btn btn-success">Join</button>
+        <button @onclick="OnLeaveClicked" class="btn btn-warning">Leave</button>
+    </div>
+    <p>Joined groups: @(JoinedGroups != null && JoinedGroups.Any() ? string.Join(", ", JoinedGroups) : "None")</p>
+</div>
+
+@code {
+    [Parameter]
+    public string GroupName { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> GroupNameChanged { get; set; }
+
+    [Parameter]
+    public IEnumerable<string> JoinedGroups { get; set; } = Enumerable.Empty<string>();
+
+    [Parameter]
+    public EventCallback OnJoin { get; set; }
+
+    [Parameter]
+    public EventCallback OnLeave { get; set; }
+
+    private async Task OnGroupNameInput(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString() ?? "";
+        GroupName = value;
+        await GroupNameChanged.InvokeAsync(value);
+    }
+
+    private async Task OnJoinClicked()
+    {
+        await OnJoin.InvokeAsync();
+    }
+
+    private async Task OnLeaveClicked()
+    {
+        await OnLeave.InvokeAsync();
+    }
+}

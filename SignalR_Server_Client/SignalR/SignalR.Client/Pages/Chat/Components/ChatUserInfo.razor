@@ -1,0 +1,22 @@
+﻿<div class="user-info">
+    <p>
+
+
+        Logged in as: <strong>@User</strong>
+        (Language: @Language, ID: @ConnectionId)
+    </p>
+    <button @onclick="OnLeaveClicked" class="btn btn-danger">Leave Chat</button>
+</div>
+
+@code {
+    [Parameter] public string User { get; set; } = string.Empty;
+    [Parameter] public string Language { get; set; } = "en";
+    [Parameter] public string? ConnectionId { get; set; }
+    [Parameter] public EventCallback OnLeave { get; set; }
+
+    private async Task OnLeaveClicked()
+    {
+        if (OnLeave.HasDelegate)
+            await OnLeave.InvokeAsync();
+    }
+}

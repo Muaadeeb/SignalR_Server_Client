@@ -1,0 +1,42 @@
+﻿@using SignalR.Client.Shared.Models
+
+<div class="chat-section">
+    <h4>General Chat</h4>
+    <div class="message-list">
+        @if (Messages != null)
+        {
+            @foreach (var msg in Messages.Where(m => string.IsNullOrEmpty(m.Group)))
+            {
+                <p>
+                    <b>@(msg.User ?? "?")</b>: @(msg.Message ?? "")
+                    <span style="margin-left:1em;">
+                        <i>Sentiment: @(msg.Sentiment ?? "unknown")</i>
+                        <span style="font-size:smaller;">
+                            (Pos: @msg.Positive.ToString("F2"), Neu: @msg.Neutral.ToString("F2"), Neg: @msg.Negative.ToString("F2"))
+                        </span>
+                    </span>
+                </p>
+            }
+        }
+    </div>
+    <div class="input-group">
+        <input @bind="Message" @bind:event="oninput" placeholder="Type a message" class="input-field" />
+        <button @onclick="SendClicked" class="btn btn-primary">Send</button>
+    </div>
+</div>
+
+@code {
+    [Parameter] public List<ChatMessageDto> Messages { get; set; } = new();
+    [Parameter] public string Message { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> MessageChanged { get; set; }
+    [Parameter] public EventCallback<string> OnSend { get; set; }
+
+    private async Task SendClicked()
+    {
+        if (!string.IsNullOrWhiteSpace(Message))
+        {
+            await OnSend.InvokeAsync(Message);
+            await MessageChanged.InvokeAsync(string.Empty); // Clear input after send
+        }
+    }
+}

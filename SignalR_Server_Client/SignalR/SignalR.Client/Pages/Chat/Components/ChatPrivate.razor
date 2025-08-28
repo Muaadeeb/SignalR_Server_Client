@@ -1,0 +1,66 @@
+﻿@using SignalR.Client.Shared.Models
+
+<div class="chat-section">
+    <h4>Private Chats</h4>
+    <div class="message-list">
+        @if (Messages != null)
+        {
+            @foreach (var msg in Messages)
+            {
+                <p>
+                    <b>@(msg.User ?? "?")</b>: @(msg.Message ?? "")
+                    <span style="margin-left:1em;">
+                        <i>Sentiment: @(msg.Sentiment ?? "unknown")</i>
+                        <span style="font-size:smaller;">
+                            (Pos: @msg.Positive.ToString("F2"), Neu: @msg.Neutral.ToString("F2"), Neg: @msg.Negative.ToString("F2"))
+                        </span>
+                    </span>
+                </p>
+            }
+        }
+    </div>
+    @if (OnlineUsers?.Any(u => u != CurrentUser) == true)
+    {
+        <div class="user-select">
+            <label>Select user to message:</label>
+            <select @bind="SelectedUser" class="input-field">
+                <option value="">Select User</option>
+                @foreach (var user in OnlineUsers.Where(u => !IsCurrentUser(u)).Distinct().OrderBy(u => u))
+                {
+                    <option value="@user">@user</option>
+                }
+            </select>   
+        </div>
+    }
+    <div class="input-group">
+        <input @bind="PrivateMessage" @bind:event="oninput" placeholder="Private message" class="input-field" />
+        <button @onclick="SendClicked" class="btn btn-primary" disabled="@(string.IsNullOrEmpty(SelectedUser))">Send Private</button>
+    </div>
+</div>
+
+@* <p>CurrentUser: @CurrentUser</p>
+<p>OnlineUsers: @string.Join(", ", OnlineUsers ?? Enumerable.Empty<string>())</p>
+ *@
+@code {
+    [Parameter] public List<ChatMessageDto> Messages { get; set; } = new();
+    [Parameter] public List<string> OnlineUsers { get; set; } = new();
+    [Parameter] public string CurrentUser { get; set; } = string.Empty;
+    [Parameter] public string? SelectedUser { get; set; }
+    [Parameter] public EventCallback<string?> SelectedUserChanged { get; set; }
+    [Parameter] public string PrivateMessage { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> PrivateMessageChanged { get; set; }
+    [Parameter] public EventCallback<(string ToUser, string Message)> OnSend { get; set; }
+
+    private async Task SendClicked()
+    {
+        if (!string.IsNullOrWhiteSpace(PrivateMessage) && !string.IsNullOrEmpty(SelectedUser))
+        {
+            await OnSend.InvokeAsync((SelectedUser, PrivateMessage));
+            await PrivateMessageChanged.InvokeAsync(string.Empty); // Clear input after send
+            await SelectedUserChanged.InvokeAsync(null); // Optionally clear selection after send
+        }
+    }
+
+    private bool IsCurrentUser(string user) =>
+        string.Equals(user?.Trim(), CurrentUser?.Trim(), StringComparison.OrdinalIgnoreCase);
+}
